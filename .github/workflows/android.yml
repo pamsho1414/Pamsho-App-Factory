@@ -31,15 +31,20 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           content = manifest.read_text()
-          marker = '    <application'
-          if marker not in content:
-              raise SystemExit('Android application tag not found')
           app_id = 'ca-app-pub-3329079275659359~2231313524'
-          meta = f'\n        <meta-data\n            android:name="com.google.android.gms.ads.APPLICATION_ID"\n            android:value="{app_id}" />'
           if 'com.google.android.gms.ads.APPLICATION_ID' not in content:
-              content = content.replace(marker, marker + meta, 1)
+              match = re.search(r'<application\b[^>]*>', content, flags=re.DOTALL)
+              if not match:
+                  raise SystemExit('Android application tag not found')
+              meta = (
+                  '\n        <meta-data\n'
+                  '            android:name="com.google.android.gms.ads.APPLICATION_ID"\n'
+                  f'            android:value="{app_id}" />'
+              )
+              content = content[:match.end()] + meta + content[match.end():]
           manifest.write_text(content)
           gradle = Path('android/app/build.gradle.kts')
           if gradle.exists():

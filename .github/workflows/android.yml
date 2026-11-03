@@ -31,21 +31,25 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
+          import xml.etree.ElementTree as ET
           manifest = Path('android/app/src/main/AndroidManifest.xml')
-          content = manifest.read_text()
-          app_id = 'ca-app-pub-3329079275659359~2231313524'
-          if 'com.google.android.gms.ads.APPLICATION_ID' not in content:
-              match = re.search(r'<application\b[^>]*>', content, flags=re.DOTALL)
-              if not match:
-                  raise SystemExit('Android application tag not found')
-              meta = (
-                  '\n        <meta-data\n'
-                  '            android:name="com.google.android.gms.ads.APPLICATION_ID"\n'
-                  f'            android:value="{app_id}" />'
-              )
-              content = content[:match.end()] + meta + content[match.end():]
-          manifest.write_text(content)
+          android_ns = 'http://schemas.android.com/apk/res/android'
+          ET.register_namespace('android', android_ns)
+          tree = ET.parse(manifest)
+          root = tree.getroot()
+          application = root.find('application')
+          if application is None:
+              raise SystemExit('Android application tag not found in manifest')
+          if not any(
+              item.get(f'{{{android_ns}}}name') == 'com.google.android.gms.ads.APPLICATION_ID'
+              for item in application.findall('meta-data')
+          ):
+              meta = ET.SubElement(application, 'meta-data')
+              meta.set(f'{{{android_ns}}}name', 'com.google.android.gms.ads.APPLICATION_ID')
+              meta.set(f'{{{android_ns}}}value', 'ca-app-pub-3329079275659359~2231313524')
+          tree.write(manifest, encoding='utf-8', xml_declaration=True)
+          ET.parse(manifest)
+          print('AdMob manifest XML validated successfully.')
           gradle = Path('android/app/build.gradle.kts')
           if gradle.exists():
               g = gradle.read_text().replace('minSdk = flutter.minSdkVersion', 'minSdk = 23')

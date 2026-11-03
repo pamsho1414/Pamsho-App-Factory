@@ -37,7 +37,7 @@ jobs:
           if marker not in content:
               raise SystemExit('Android application tag not found')
           app_id = 'ca-app-pub-3329079275659359~2231313524'
-          meta = f'\\n        <meta-data\\n            android:name="com.google.android.gms.ads.APPLICATION_ID"\\n            android:value="{app_id}" />'
+          meta = f'\n        <meta-data\n            android:name="com.google.android.gms.ads.APPLICATION_ID"\n            android:value="{app_id}" />'
           if 'com.google.android.gms.ads.APPLICATION_ID' not in content:
               content = content.replace(marker, marker + meta, 1)
           manifest.write_text(content)

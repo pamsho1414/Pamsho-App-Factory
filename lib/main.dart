@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -103,17 +104,21 @@ class _NotesHomePageState extends State<NotesHomePage> {
     await prefs.setStringList(_storageKey, raw);
   }
 
-  Future<void> _openEditor({Note? note}) async {
-    final result = await Navigator.of(context).push<Note>(
-      MaterialPageRoute(builder: (_) => NoteEditorPage(note: note)),
-    );
-    if (result == null) return;
+  Future<void> _upsertNote(Note note) async {
+    if (!mounted) return;
     setState(() {
-      _notes.removeWhere((n) => n.id == result.id);
-      _notes.add(result);
+      _notes.removeWhere((n) => n.id == note.id);
+      _notes.add(note);
       _notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     });
     await _persist();
+  }
+
+  Future<void> _openEditor({Note? note}) async {
+    final result = await Navigator.of(context).push<Note>(
+      MaterialPageRoute(builder: (_) => NoteEditorPage(note: note, onAutoSave: _upsertNote)),
+    );
+    if (result != null) await _upsertNote(result);
   }
 
   Future<void> _deleteNote(Note note) async {
@@ -230,8 +235,9 @@ class _EmptyState extends StatelessWidget {
 }
 
 class NoteEditorPage extends StatefulWidget {
-  const NoteEditorPage({super.key, this.note});
+  const NoteEditorPage({super.key, this.note, required this.onAutoSave});
   final Note? note;
+  final Future<void> Function(Note) onAutoSave;
   @override
   State<NoteEditorPage> createState() => _NoteEditorPageState();
 }
@@ -239,44 +245,80 @@ class NoteEditorPage extends StatefulWidget {
 class _NoteEditorPageState extends State<NoteEditorPage> {
   late final TextEditingController _title;
   late final TextEditingController _body;
+  Timer? _saveTimer;
+  late final String _noteId;
+  bool _saving = false;
+  bool _saved = false;
+
+  bool get _hasContent => _title.text.trim().isNotEmpty || _body.text.trim().isNotEmpty;
+
   @override
   void initState() {
     super.initState();
+    _noteId = widget.note?.id ?? DateTime.now().microsecondsSinceEpoch.toString();
     _title = TextEditingController(text: widget.note?.title ?? '');
     _body = TextEditingController(text: widget.note?.body ?? '');
+    _title.addListener(_scheduleAutoSave);
+    _body.addListener(_scheduleAutoSave);
   }
+
+  void _scheduleAutoSave() {
+    _saveTimer?.cancel();
+    if (!_hasContent) return;
+    setState(() { _saving = true; _saved = false; });
+    _saveTimer = Timer(const Duration(milliseconds: 650), _autoSave);
+  }
+
+  Future<void> _autoSave() async {
+    if (!_hasContent) return;
+    final note = Note(id: _noteId, title: _title.text.trim(), body: _body.text.trim(), updatedAt: DateTime.now());
+    await widget.onAutoSave(note);
+    if (mounted) setState(() { _saving = false; _saved = true; });
+  }
+
+  Future<void> _finish() async {
+    _saveTimer?.cancel();
+    if (_hasContent) await _autoSave();
+    if (mounted) Navigator.pop(context);
+  }
+
   @override
   void dispose() {
+    _saveTimer?.cancel();
     _title.dispose();
     _body.dispose();
     super.dispose();
   }
-  void _save() {
-    if (_title.text.trim().isEmpty && _body.text.trim().isEmpty) {
-      Navigator.pop(context);
-      return;
-    }
-    Navigator.pop(context, Note(
-      id: widget.note?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
-      title: _title.text.trim(),
-      body: _body.text.trim(),
-      updatedAt: DateTime.now(),
-    ));
-  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      leading: IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-      title: Text(widget.note == null ? 'New note' : 'Edit note', style: const TextStyle(fontWeight: FontWeight.w800)),
-      actions: [TextButton(onPressed: _save, child: const Text('Save', style: TextStyle(fontWeight: FontWeight.w800)))],
+  Widget build(BuildContext context) => PopScope(
+    canPop: false,
+    onPopInvokedWithResult: (didPop, result) { if (!didPop) _finish(); },
+    child: Scaffold(
+      backgroundColor: const Color(0xFFFAF9F6),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFFAF9F6),
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _finish),
+        title: Text(widget.note == null ? 'New note' : 'Edit note', style: const TextStyle(fontWeight: FontWeight.w800)),
+        actions: [Padding(
+          padding: const EdgeInsets.only(right: 16),
+          child: Center(child: Text(_saving ? 'Saving…' : (_saved ? 'Saved' : 'Auto-save on'),
+            style: const TextStyle(fontSize: 12, color: Color(0xFF788392), fontWeight: FontWeight.w600))),
+        )],
+      ),
+      body: SafeArea(child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+        child: Column(children: [
+          TextField(controller: _title, textCapitalization: TextCapitalization.sentences,
+            style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: Color(0xFF253044)),
+            decoration: const InputDecoration(hintText: 'Title', filled: false)),
+          const SizedBox(height: 12),
+          Expanded(child: TextField(controller: _body, expands: true, maxLines: null, minLines: null,
+            textCapitalization: TextCapitalization.sentences, textAlignVertical: TextAlignVertical.top,
+            style: const TextStyle(height: 1.55, color: Color(0xFF354052)),
+            decoration: const InputDecoration(hintText: 'Start writing...', filled: false))),
+        ]),
+      )),
     ),
-    body: SafeArea(child: Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-      child: Column(children: [
-        TextField(controller: _title, textCapitalization: TextCapitalization.sentences, style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800), decoration: const InputDecoration(hintText: 'Title', filled: false)),
-        const SizedBox(height: 12),
-        Expanded(child: TextField(controller: _body, expands: true, maxLines: null, minLines: null, textCapitalization: TextCapitalization.sentences, textAlignVertical: TextAlignVertical.top, decoration: const InputDecoration(hintText: 'Start writing...', filled: false))),
-      ]),
-    )),
   );
 }

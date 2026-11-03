@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await MobileAds.instance.initialize();
   runApp(const PamshoNotesApp());
 }
 
@@ -145,7 +143,7 @@ class _NotesHomePageState extends State<NotesHomePage> {
       ),
       bottomNavigationBar: const SafeArea(
         top: false,
-        child: SizedBox(height: 50, child: Center(child: _TestBannerAd())),
+        child: SizedBox(height: 50),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openEditor(),
@@ -329,59 +327,3 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   );
 }
 
-
-class _TestBannerAd extends StatefulWidget {
-  const _TestBannerAd();
-
-  @override
-  State<_TestBannerAd> createState() => _TestBannerAdState();
-}
-
-class _TestBannerAdState extends State<_TestBannerAd> {
-  BannerAd? _bannerAd;
-  bool _loaded = false;
-  static const String _testBannerUnitId =
-      'ca-app-pub-3940256099942544/6300978111';
-
-  @override
-  void initState() {
-    super.initState();
-    final banner = BannerAd(
-      adUnitId: _testBannerUnitId,
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          if (!mounted) {
-            ad.dispose();
-            return;
-          }
-          setState(() => _loaded = true);
-        },
-        onAdFailedToLoad: (ad, error) {
-          ad.dispose();
-          if (mounted) setState(() => _loaded = false);
-        },
-      ),
-    );
-    _bannerAd = banner;
-    banner.load();
-  }
-
-  @override
-  void dispose() {
-    _bannerAd?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final banner = _bannerAd;
-    if (!_loaded || banner == null) return const SizedBox.shrink();
-    return SizedBox(
-      width: banner.size.width.toDouble(),
-      height: banner.size.height.toDouble(),
-      child: AdWidget(ad: banner),
-    );
-  }
-}

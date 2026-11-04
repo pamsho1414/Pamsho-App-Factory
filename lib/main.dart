@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_picker/file_picker.dart';
 
 Future<void> main() async { WidgetsFlutterBinding.ensureInitialized(); runApp(const NotesApp()); }
 const seed = Color(0xFF5267D8);
@@ -46,6 +48,34 @@ class NotesStore extends ChangeNotifier {
     bin.sort((a,b)=>b.updated.compareTo(a.updated));
   }
   Future<void> _save() async { final p=await SharedPreferences.getInstance(); await p.setString(activeKey,jsonEncode(notes.map((n)=>n.json()).toList())); await p.setString(binKey,jsonEncode(bin.map((n)=>n.json()).toList())); }
+  Map<String, dynamic> backupData() => {'format':'easy_simple_notes_backup','version':1,'exportedAt':DateTime.now().toUtc().toIso8601String(),'notes':notes.map((n)=>n.json()).toList(),'bin':bin.map((n)=>n.json()).toList()};
+
+  Future<void> importBackup(String source) async {
+    final decoded = jsonDecode(source);
+    if (decoded is! Map || decoded['format'] != 'easy_simple_notes_backup' || decoded['version'] != 1) {
+      throw const FormatException('This is not a supported Easy Simple Notes backup.');
+    }
+    List<Note> parseNotes(dynamic value, String label) {
+      if (value is! List) throw FormatException('Backup $label must be a list.');
+      return value.map((item) {
+        if (item is! Map) throw FormatException('Backup contains an invalid $label item.');
+        try { return Note.from(Map<String, dynamic>.from(item)); }
+        catch (_) { throw FormatException('Backup contains an unreadable $label item.'); }
+      }).toList();
+    }
+    final restoredNotes = parseNotes(decoded['notes'], 'notes');
+    final restoredBin = parseNotes(decoded['bin'], 'Bin');
+    final ids = <String>{};
+    for (final note in [...restoredNotes, ...restoredBin]) {
+      if (note.id.isEmpty || !ids.add(note.id)) throw const FormatException('Backup contains an empty or duplicate note ID.');
+    }
+    notes = restoredNotes;
+    bin = restoredBin;
+    _sort();
+    await _save();
+    notifyListeners();
+  }
+
   Future<void> upsert(Note n) async { notes.removeWhere((x)=>x.id==n.id); bin.removeWhere((x)=>x.id==n.id); notes.add(n); _sort(); await _save(); notifyListeners(); }
   Future<void> trash(Note n) async { notes.removeWhere((x)=>x.id==n.id); bin.removeWhere((x)=>x.id==n.id); bin.add(n); _sort(); await _save(); notifyListeners(); }
   Future<void> togglePin(Note n) async {
@@ -132,7 +162,7 @@ class _HomeState extends State<Home> {
                 )).toList(),
       ),
       IconButton(tooltip:'Bin',onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>Bin(store:widget.store))),icon:Badge(isLabelVisible:widget.store.bin.isNotEmpty,label:Text('${widget.store.bin.length}'),child:const Icon(Icons.delete_sweep_outlined))),
-      IconButton(tooltip:'Settings',onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>Settings(dark:widget.dark,accent:widget.accent,onDark:widget.onDark,onAccent:widget.onAccent))),icon:const Icon(Icons.tune_rounded)),const SizedBox(width:5)]),
+      IconButton(tooltip:'Settings',onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>Settings(store:widget.store,dark:widget.dark,accent:widget.accent,onDark:widget.onDark,onAccent:widget.onAccent))),icon:const Icon(Icons.tune_rounded)),const SizedBox(width:5)]),
       floatingActionButton:FloatingActionButton.extended(onPressed:()=>edit(),icon:const Icon(Icons.add),label:const Text('New note')),
       body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(18,8,18,90),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         TextField(onChanged:(v)=>setState(()=>query=v),decoration:const InputDecoration(hintText:'Search notes',prefixIcon:Icon(Icons.search))),
@@ -353,9 +383,51 @@ class Bin extends StatelessWidget {
 }
 
 class Settings extends StatelessWidget {
-  const Settings({super.key,required this.dark,required this.accent,required this.onDark,required this.onAccent});
+  const Settings({super.key,required this.store,required this.dark,required this.accent,required this.onDark,required this.onAccent});
+  final NotesStore store;
   final bool dark; final Color accent; final ValueChanged<bool> onDark; final ValueChanged<Color> onAccent;
   static const colors=[Color(0xFF5267D8),Color(0xFF168C83),Color(0xFF8A55C7),Color(0xFFE07845),Color(0xFFCA5278),Color(0xFF397DAF)];
-  @override Widget build(BuildContext c){final t=Theme.of(c);return Scaffold(appBar:AppBar(title:const Text('Settings',style:TextStyle(fontWeight:FontWeight.w800))),body:ListView(padding:const EdgeInsets.all(18),children:[Text('APPEARANCE',style:TextStyle(fontSize:11,letterSpacing:1.2,fontWeight:FontWeight.w800,color:t.colorScheme.onSurfaceVariant)),const SizedBox(height:10),Card(child:SwitchListTile(secondary:Icon(dark?Icons.dark_mode:Icons.light_mode),title:const Text('Dark mode',style:TextStyle(fontWeight:FontWeight.w700)),subtitle:Text(dark?'Dark appearance enabled':'Light appearance enabled'),value:dark,onChanged:onDark)),const SizedBox(height:23),Text('ACCENT COLOR',style:TextStyle(fontSize:11,letterSpacing:1.2,fontWeight:FontWeight.w800,color:t.colorScheme.onSurfaceVariant)),const SizedBox(height:12),Card(child:Padding(padding:const EdgeInsets.all(18),child:Wrap(spacing:15,runSpacing:15,children:colors.map((color)=>InkWell(customBorder:const CircleBorder(),onTap:()=>onAccent(color),child:Container(width:38,height:38,decoration:BoxDecoration(color:color,shape:BoxShape.circle,border:color.toARGB32()==accent.toARGB32()?Border.all(color:t.colorScheme.onSurface,width:3):null),child:color.toARGB32()==accent.toARGB32()?const Icon(Icons.check,color:Colors.white):null))).toList()))),const SizedBox(height:23),Text('ABOUT',style:TextStyle(fontSize:11,letterSpacing:1.2,fontWeight:FontWeight.w800,color:t.colorScheme.onSurfaceVariant)),const SizedBox(height:10),const Card(child:ListTile(leading:Icon(Icons.sticky_note_2_outlined),title:Text('Easy Simple Notes'),subtitle:Text('A clean, private place for your ideas · Version 1.0'))),const SizedBox(height:12),Text('Notes are stored locally on this device. Clearing app data or uninstalling may remove them.',style:TextStyle(fontSize:12,height:1.5,color:t.colorScheme.onSurfaceVariant))]));}
+  Future<void> exportBackup(BuildContext c) async {
+    try {
+      final json = const JsonEncoder.withIndent('  ').convert(store.backupData());
+      final path = await FilePicker.platform.saveFile(dialogTitle: 'Save notes backup', fileName: 'easy-simple-notes-backup.json', bytes: Uint8List.fromList(utf8.encode(json)));
+      if (c.mounted && path != null) ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content: Text('Backup saved successfully')));
+    } catch (e) {
+      if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text('Backup failed: $e')));
+    }
+  }
+
+  Future<void> restoreBackup(BuildContext c) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(dialogTitle: 'Choose notes backup', type: FileType.custom, allowedExtensions: ['json'], withData: true);
+      if (result == null || !c.mounted) return;
+      final bytes = result.files.single.bytes;
+      if (bytes == null) throw const FormatException('The selected backup could not be read.');
+      final confirmed = await showDialog<bool>(context: c, builder: (dialogContext) => AlertDialog(
+        title: const Text('Restore backup?'),
+        content: const Text('Restoring replaces the notes currently on this device, including the Bin. Export a backup of your current notes first if you want to keep them.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Restore')),
+        ],
+      ));
+      if (confirmed != true || !c.mounted) return;
+      await store.importBackup(utf8.decode(bytes));
+      if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content: Text('Notes restored successfully')));
+    } catch (e) {
+      if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text('Restore failed: $e')));
+    }
+  }
+
+  @override Widget build(BuildContext c){final t=Theme.of(c);return Scaffold(appBar:AppBar(title:const Text('Settings',style:TextStyle(fontWeight:FontWeight.w800))),body:ListView(padding:const EdgeInsets.all(18),children:[
+    Text('BACKUP & RESTORE',style:TextStyle(fontSize:11,letterSpacing:1.2,fontWeight:FontWeight.w800,color:t.colorScheme.onSurfaceVariant)),
+    const SizedBox(height:10),
+    Card(child:Column(children:[
+      ListTile(leading:const Icon(Icons.backup_outlined),title:const Text('Export notes backup',style:TextStyle(fontWeight:FontWeight.w700)),subtitle:const Text('Save your notes and Bin as a JSON file'),onTap:()=>exportBackup(c)),
+      const Divider(height:1,indent:16,endIndent:16),
+      ListTile(leading:const Icon(Icons.settings_backup_restore),title:const Text('Restore from backup',style:TextStyle(fontWeight:FontWeight.w700)),subtitle:const Text('Replace this device’s notes from a backup file'),onTap:()=>restoreBackup(c)),
+    ])),
+    const SizedBox(height:23),
+    Text('APPEARANCE',style:TextStyle(fontSize:11,letterSpacing:1.2,fontWeight:FontWeight.w800,color:t.colorScheme.onSurfaceVariant)),const SizedBox(height:10),Card(child:SwitchListTile(secondary:Icon(dark?Icons.dark_mode:Icons.light_mode),title:const Text('Dark mode',style:TextStyle(fontWeight:FontWeight.w700)),subtitle:Text(dark?'Dark appearance enabled':'Light appearance enabled'),value:dark,onChanged:onDark)),const SizedBox(height:23),Text('ACCENT COLOR',style:TextStyle(fontSize:11,letterSpacing:1.2,fontWeight:FontWeight.w800,color:t.colorScheme.onSurfaceVariant)),const SizedBox(height:12),Card(child:Padding(padding:const EdgeInsets.all(18),child:Wrap(spacing:15,runSpacing:15,children:colors.map((color)=>InkWell(customBorder:const CircleBorder(),onTap:()=>onAccent(color),child:Container(width:38,height:38,decoration:BoxDecoration(color:color,shape:BoxShape.circle,border:color.toARGB32()==accent.toARGB32()?Border.all(color:t.colorScheme.onSurface,width:3):null),child:color.toARGB32()==accent.toARGB32()?const Icon(Icons.check,color:Colors.white):null))).toList()))),const SizedBox(height:23),Text('ABOUT',style:TextStyle(fontSize:11,letterSpacing:1.2,fontWeight:FontWeight.w800,color:t.colorScheme.onSurfaceVariant)),const SizedBox(height:10),const Card(child:ListTile(leading:Icon(Icons.sticky_note_2_outlined),title:Text('Easy Simple Notes'),subtitle:Text('A clean, private place for your ideas · Version 1.0'))),const SizedBox(height:12),Text('Notes are stored locally on this device. Clearing app data or uninstalling may remove them.',style:TextStyle(fontSize:12,height:1.5,color:t.colorScheme.onSurfaceVariant))]));}
 }
 String dateText(DateTime d)=>'${d.day.toString().padLeft(2,'0')}/${d.month.toString().padLeft(2,'0')}/${d.year} · ${d.hour.toString().padLeft(2,'0')}:${d.minute.toString().padLeft(2,'0')}';

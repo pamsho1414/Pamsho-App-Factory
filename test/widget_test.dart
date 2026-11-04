@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pamsho_notes/main.dart';
@@ -68,6 +69,38 @@ void main() {
     expect(legacy.category, 'General');
     store.dispose();
     reloaded.dispose();
+  });
+
+  test('backup restores active notes, Bin and note metadata', () async {
+    final source = NotesStore();
+    await source.load();
+    final pinned = Note('backup-1', 'Pinned', 'Keep me', DateTime(2026, 11, 4), pinned: true, category: 'Work', colorValue: 0xFFDCEBFF);
+    final deleted = Note('backup-2', 'Deleted', 'Restore me', DateTime(2026, 11, 3), category: 'Personal');
+    await source.upsert(pinned);
+    await source.upsert(deleted);
+    await source.trash(deleted);
+    final payload = jsonEncode(source.backupData());
+    final destination = NotesStore();
+    await destination.load();
+    await destination.upsert(Note('old', 'Old device note', '', DateTime(2026, 11, 2)));
+    await destination.importBackup(payload);
+    expect(destination.notes, hasLength(1));
+    expect(destination.notes.single.id, 'backup-1');
+    expect(destination.notes.single.pinned, isTrue);
+    expect(destination.notes.single.category, 'Work');
+    expect(destination.notes.single.colorValue, 0xFFDCEBFF);
+    expect(destination.bin.single.id, 'backup-2');
+    source.dispose();
+    destination.dispose();
+  });
+
+  test('invalid backup is rejected without overwriting existing notes', () async {
+    final store = NotesStore();
+    await store.load();
+    await store.upsert(Note('safe', 'Keep this', '', DateTime(2026, 11, 4)));
+    await expectLater(store.importBackup('{"format":"wrong","version":1,"notes":[],"bin":[]}'), throwsFormatException);
+    expect(store.notes.single.id, 'safe');
+    store.dispose();
   });
 
   testWidgets('home screen opens with Easy Simple Notes branding', (tester) async {

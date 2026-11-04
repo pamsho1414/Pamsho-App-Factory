@@ -296,6 +296,43 @@ class _EditorState extends State<Editor> {
   void schedule(){changed=true;timer?.cancel();if(mounted)setState(()=>saving=true);timer=Timer(const Duration(milliseconds:500),save);}
   Future<void> save() async {if(!changed)return;if(title.text.trim().isEmpty&&body.text.trim().isEmpty){if(mounted)setState(()=>saving=false);return;}try{await widget.store.upsert(Note(id,title.text.trim(),body.text.trim(),DateTime.now(),pinned:widget.note?.pinned??false,category:category,colorValue:colorValue));changed=false;if(mounted)setState(() { saving=false; saved=true; });}catch(e){debugPrint('Save failed: $e');if(mounted)setState(()=>saving=false);}}
   Future<void> finish() async {timer?.cancel();await save();if(mounted)Navigator.pop(context);}
+
+  void applyFormatting(String kind) {
+    final current = body.value;
+    final text = current.text;
+    final selection = current.selection;
+    final start = selection.isValid ? selection.start.clamp(0, text.length) : text.length;
+    final end = selection.isValid ? selection.end.clamp(start, text.length) : start;
+    final lineStart = text.lastIndexOf('\n', start - 1) + 1;
+    var lineEnd = text.indexOf('\n', end);
+    if (lineEnd < 0) lineEnd = text.length;
+    final selectedBlock = text.substring(lineStart, lineEnd);
+    final lines = selectedBlock.split('\n');
+    String formatted;
+    if (kind == 'divider') {
+      formatted = '────────────';
+    } else {
+      formatted = lines.asMap().entries.map((entry) {
+        final line = entry.value;
+        if (line.trim().isEmpty) return line;
+        switch (kind) {
+          case 'bullet': return '• $line';
+          case 'number': return '${entry.key + 1}. $line';
+          case 'check': return '☐ $line';
+          case 'heading': return '# $line';
+          case 'quote': return '> $line';
+          default: return line;
+        }
+      }).join('\n');
+    }
+    final updated = text.replaceRange(lineStart, lineEnd, formatted);
+    final cursor = lineStart + formatted.length;
+    body.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection.collapsed(offset: cursor),
+    );
+    FocusScope.of(context).requestFocus(FocusNode());
+  }
   @override void dispose(){timer?.cancel();title.dispose();body.dispose();super.dispose();}
   @override Widget build(BuildContext c)=>PopScope(canPop:false,onPopInvokedWithResult:(didPop,result){if(!didPop)finish();},child:Scaffold(appBar:AppBar(leading:IconButton(onPressed:finish,icon:const Icon(Icons.arrow_back)),title:Text(widget.note==null?'New note':'Edit note',style:const TextStyle(fontWeight:FontWeight.w800)),actions:[Padding(padding:const EdgeInsets.only(right:16),child:Center(child:Text(saving?'Saving…':saved?'Saved':'Auto-save',style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant))))]),body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,20),child:Column(children:[
     DropdownButtonFormField<String>(
@@ -309,7 +346,35 @@ class _EditorState extends State<Editor> {
     const SizedBox(height:8),
     Wrap(spacing:12,children:[0,0xFFFFF1C9,0xFFDDF3E4,0xFFDCEBFF,0xFFF1DDF7,0xFFFFE1E1].map((value)=>InkWell(onTap:(){setState(()=>colorValue=value);changed=true;save();},customBorder:const CircleBorder(),child:Container(width:30,height:30,decoration:BoxDecoration(color:value==0?Theme.of(c).colorScheme.surfaceContainerHighest:Color(value),shape:BoxShape.circle,border:Border.all(color:colorValue==value?Theme.of(c).colorScheme.primary:Theme.of(c).colorScheme.outline,width:colorValue==value?3:1)),child:colorValue==value?const Icon(Icons.check,size:16):null))).toList()),
     const SizedBox(height:12),
-    TextField(controller:title,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:25,fontWeight:FontWeight.w800),decoration:const InputDecoration(hintText:'Title',filled:false)),const SizedBox(height:12),Expanded(child:TextField(controller:body,expands:true,minLines:null,maxLines:null,textAlignVertical:TextAlignVertical.top,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:16,height:1.6),decoration:const InputDecoration(hintText:'Start writing your thoughts…',filled:false)))])))));
+    TextField(controller:title,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:25,fontWeight:FontWeight.w800),decoration:const InputDecoration(hintText:'Title',filled:false)),
+    const SizedBox(height:10),
+    SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        ActionChip(avatar: const Icon(Icons.format_list_bulleted, size: 18), label: const Text('Bullets'), onPressed: () => applyFormatting('bullet')),
+        const SizedBox(width: 7),
+        ActionChip(avatar: const Icon(Icons.format_list_numbered, size: 18), label: const Text('Numbered'), onPressed: () => applyFormatting('number')),
+        const SizedBox(width: 7),
+        ActionChip(avatar: const Icon(Icons.check_box_outlined, size: 18), label: const Text('Checklist'), onPressed: () => applyFormatting('check')),
+        const SizedBox(width: 7),
+        ActionChip(avatar: const Icon(Icons.title, size: 18), label: const Text('Heading'), onPressed: () => applyFormatting('heading')),
+        const SizedBox(width: 7),
+        ActionChip(avatar: const Icon(Icons.format_quote, size: 18), label: const Text('Quote'), onPressed: () => applyFormatting('quote')),
+        const SizedBox(width: 7),
+        ActionChip(avatar: const Icon(Icons.horizontal_rule, size: 18), label: const Text('Divider'), onPressed: () => applyFormatting('divider')),
+      ]),
+    ),
+    const SizedBox(height:8),
+    Expanded(child: TextField(controller:body,expands:true,minLines:null,maxLines:null,textAlignVertical:TextAlignVertical.top,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:16,height:1.6),decoration:const InputDecoration(hintText:'Start writing your thoughts…',filled:false))),
+    const SizedBox(height:8),
+    Align(
+      alignment: Alignment.centerRight,
+      child: Text(
+        '${body.text.trim().isEmpty ? 0 : body.text.trim().split(RegExp(r'\\s+')).length} words · ${body.text.length} characters',
+        style: TextStyle(fontSize: 11, color: Theme.of(c).colorScheme.onSurfaceVariant),
+      ),
+    ),
+  ]))))));
 }
 
 class Bin extends StatelessWidget {

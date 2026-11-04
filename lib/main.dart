@@ -4,29 +4,12 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // Diagnostic build: temporarily disable the entire ads SDK and banner path
-  // to determine whether native AdMob startup is causing the launch crash.
-  runApp(const NotesApp(enableAds: false));
+  runApp(const NotesApp());
 }
 
-Future<void>? _adsInitialization;
-
-Future<void> _initializeAdsSafely() {
-  return _adsInitialization ??= () async {
-    try {
-      await MobileAds.instance.initialize();
-      debugPrint('AdMob initialized successfully.');
-    } catch (error, stackTrace) {
-      // Keep the core notes app usable even if the ads SDK fails.
-      debugPrint('AdMob initialization failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-    }
-  }();
-}
 const seed = Color(0xFF5267D8);
 
 class Note {
@@ -128,7 +111,7 @@ class NotesStore extends ChangeNotifier {
   Future<void> empty() async { bin.clear(); await _save(); notifyListeners(); }
 }
 
-class NotesApp extends StatefulWidget { const NotesApp({super.key, this.enableAds = true}); final bool enableAds; @override State<NotesApp> createState()=>_NotesAppState(); }
+class NotesApp extends StatefulWidget { const NotesApp({super.key}); @override State<NotesApp> createState()=>_NotesAppState(); }
 class _NotesAppState extends State<NotesApp> {
   final store=NotesStore(); bool dark=false; Color accent=seed;
   @override void initState(){ super.initState(); store.load(); _settings(); }
@@ -139,78 +122,12 @@ class _NotesAppState extends State<NotesApp> {
   @override void dispose(){store.dispose();super.dispose();}
   @override Widget build(BuildContext c)=>AnimatedBuilder(animation:store,builder:(c,_)=>
     MaterialApp(debugShowCheckedModeBanner:false,title:'Easy Simple Notes',theme:theme(Brightness.light),darkTheme:theme(Brightness.dark),themeMode:dark?ThemeMode.dark:ThemeMode.light,
-      home:Home(store:store,dark:dark,accent:accent,onDark:setDark,onAccent:setAccent,enableAds:widget.enableAds)));
-}
-
-const String _bannerAdUnitId = String.fromEnvironment('ADMOB_BANNER_AD_UNIT_ID', defaultValue: 'ca-app-pub-3940256099942544/9214589741');
-
-class HomeBannerAd extends StatefulWidget {
-  const HomeBannerAd({super.key});
-  @override
-  State<HomeBannerAd> createState() => _HomeBannerAdState();
-}
-
-class _HomeBannerAdState extends State<HomeBannerAd> {
-  BannerAd? _banner;
-  bool _loaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(_createAndLoadBanner());
-  }
-
-  Future<void> _createAndLoadBanner() async {
-    // Wait for the one-time SDK initialization before requesting a banner.
-    await _initializeAdsSafely();
-    if (!mounted) return;
-
-    final ad = BannerAd(
-      adUnitId: _bannerAdUnitId,
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          if (!mounted) { ad.dispose(); return; }
-          setState(() => _loaded = true);
-        },
-        onAdFailedToLoad: (ad, error) {
-          debugPrint('AdMob banner failed to load: $error');
-          ad.dispose();
-          if (identical(_banner, ad)) _banner = null;
-        },
-      ),
-    );
-    _banner = ad;
-    ad.load();
-  }
-
-  @override
-  void dispose() { _banner?.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    final ad = _banner;
-    if (!_loaded || ad == null) return const SizedBox.shrink();
-    return SafeArea(
-      top: false,
-      child: SizedBox(
-        height: ad.size.height.toDouble(),
-        child: Center(
-          child: SizedBox(
-            width: ad.size.width.toDouble(),
-            height: ad.size.height.toDouble(),
-            child: AdWidget(ad: ad),
-          ),
-        ),
-      ),
-    );
-  }
+      home:Home(store:store,dark:dark,accent:accent,onDark:setDark,onAccent:setAccent)));
 }
 
 class Home extends StatefulWidget {
-  const Home({super.key,required this.store,required this.dark,required this.accent,required this.onDark,required this.onAccent,required this.enableAds});
-  final NotesStore store; final bool dark; final Color accent; final ValueChanged<bool> onDark; final ValueChanged<Color> onAccent; final bool enableAds;
+  const Home({super.key,required this.store,required this.dark,required this.accent,required this.onDark,required this.onAccent});
+  final NotesStore store; final bool dark; final Color accent; final ValueChanged<bool> onDark; final ValueChanged<Color> onAccent;;
   @override State<Home> createState()=>_HomeState();
 }
 class _HomeState extends State<Home> {
@@ -267,7 +184,6 @@ class _HomeState extends State<Home> {
       IconButton(tooltip:'Bin',onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>Bin(store:widget.store))),icon:Badge(isLabelVisible:widget.store.bin.isNotEmpty,label:Text('${widget.store.bin.length}'),child:const Icon(Icons.delete_sweep_outlined))),
       IconButton(tooltip:'Settings',onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>Settings(store:widget.store,dark:widget.dark,accent:widget.accent,onDark:widget.onDark,onAccent:widget.onAccent))),icon:const Icon(Icons.tune_rounded)),const SizedBox(width:5)]),
       floatingActionButton:FloatingActionButton.extended(onPressed:()=>edit(),icon:const Icon(Icons.add),label:const Text('New note')),
-      bottomNavigationBar: widget.enableAds ? const HomeBannerAd() : null,
       body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(18,8,18,90),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         TextField(onChanged:(v)=>setState(()=>query=v),decoration:const InputDecoration(hintText:'Search notes',prefixIcon:Icon(Icons.search))),
         const SizedBox(height:12),

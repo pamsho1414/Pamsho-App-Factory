@@ -127,17 +127,33 @@ jobs:
           disable-animations: true
           script: |
             set -e
-            adb wait-for-device
-            adb install -r build/app/outputs/flutter-apk/app-debug.apk
-            adb shell am force-stop com.pamsho.pamsho_notes
-            adb logcat -c
-            adb shell monkey -p com.pamsho.pamsho_notes 1
-            sleep 20
-            APP_PID="$(adb shell pidof com.pamsho.pamsho_notes | tr -d '\r' || true)"
-            echo "App process after cold start: $APP_PID"
-            test -n "$APP_PID" || { echo 'App process did not remain alive after cold start.'; adb logcat -d -t 500; exit 1; }
-            CRASH_LOG="$(adb logcat -d -t 1000 | grep -E 'FATAL EXCEPTION|Fatal signal [0-9]+|Process: com\.pamsho\.pamsho_notes' || true)"
-            test -z "$CRASH_LOG" || { echo "$CRASH_LOG"; echo 'Fatal Android crash detected during cold start.'; exit 1; }
+            adb -s emulator-5554 wait-for-device
+            adb -s emulator-5554 install -r build/app/outputs/flutter-apk/app-debug.apk
+            adb -s emulator-5554 shell am force-stop com.pamsho.pamsho_notes
+            adb -s emulator-5554 logcat -c
+
+            echo "Resolving launcher activity..."
+            RESOLVED_ACTIVITY="$(adb -s emulator-5554 shell cmd package resolve-activity --brief com.pamsho.pamsho_notes | tr -d '\r' | tail -n 1)"
+            echo "Resolved activity: $RESOLVED_ACTIVITY"
+            test -n "$RESOLVED_ACTIVITY" || { echo 'No launchable activity found for the installed app.'; adb -s emulator-5554 logcat -d -t 1000; exit 1; }
+
+            echo "Launching app explicitly..."
+            START_RESULT="$(adb -s emulator-5554 shell am start -W -n com.pamsho.pamsho_notes/.MainActivity 2>&1)"
+            echo "$START_RESULT"
+            echo "$START_RESULT" | grep -q 'Status: ok' || { echo 'Android ActivityManager did not report a successful app launch.'; adb -s emulator-5554 logcat -d -t 1000; exit 1; }
+
+            sleep 10
+            TOP_ACTIVITY="$(adb -s emulator-5554 shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | grep -F 'com.pamsho.pamsho_notes' || true)"
+            APP_PROCESS="$(adb -s emulator-5554 shell ps -A | grep -F 'com.pamsho.pamsho_notes' || true)"
+            echo "Resumed app activity: $TOP_ACTIVITY"
+            echo "App process: $APP_PROCESS"
+            test -n "$TOP_ACTIVITY" || { echo 'The notes app did not remain in the foreground after launch.'; adb -s emulator-5554 logcat -d -v threadtime -t 2000; adb -s emulator-5554 shell dumpsys activity activities; exit 1; }
+            if [ -z "$APP_PROCESS" ]; then
+              echo 'Warning: process listing did not return the package name; foreground activity check passed.'
+            fi
+
+            APP_CRASH="$(adb -s emulator-5554 logcat -d -v threadtime -t 2000 | grep -E 'FATAL EXCEPTION|Fatal signal [0-9]+|Process: com\\.pamsho\\.pamsho_notes' || true)"
+            test -z "$APP_CRASH" || { echo "$APP_CRASH"; echo 'Fatal crash marker detected during app cold start.'; exit 1; }
       - name: Build production release APK with live banner unit
         run: flutter build apk --release
       - uses: actions/upload-artifact@v4

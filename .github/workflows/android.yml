@@ -54,11 +54,17 @@ jobs:
           from pathlib import Path
           p = Path("android/app/build.gradle.kts")
           if p.exists():
-              p.write_text(p.read_text().replace("minSdk = flutter.minSdkVersion", "minSdk = 23"))
+              source = p.read_text()
+              source = source.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 36")
+              source = source.replace("minSdk = flutter.minSdkVersion", "minSdk = 23")
+              p.write_text(source)
           else:
               p = Path("android/app/build.gradle")
               if p.exists():
-                  p.write_text(p.read_text().replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23"))
+                  source = p.read_text()
+                  source = source.replace("compileSdkVersion flutter.compileSdkVersion", "compileSdkVersion 36")
+                  source = source.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
+                  p.write_text(source)
           PY
       - run: flutter pub get
       - run: flutter analyze

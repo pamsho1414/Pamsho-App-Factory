@@ -27,6 +27,30 @@ jobs:
           cache: true
       - name: Generate Android platform files
         run: flutter create . --platforms=android --org=com.pamsho --project-name=pamsho_notes
+      - name: Configure AdMob Android app ID
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          content = manifest.read_text()
+          marker = 'android:name="com.google.android.gms.ads.APPLICATION_ID"'
+          if marker not in content:
+              entry = '''
+                  <meta-data
+                      android:name="com.google.android.gms.ads.APPLICATION_ID"
+                      android:value="ca-app-pub-3329079275659359~2231313524"/>
+              '''
+              content = content.replace("</application>", entry + "\\n    </application>")
+              manifest.write_text(content)
+          gradle_kts = Path("android/app/build.gradle.kts")
+          gradle_groovy = Path("android/app/build.gradle")
+          if gradle_kts.exists():
+              text = gradle_kts.read_text().replace("minSdk = flutter.minSdkVersion", "minSdk = 23")
+              gradle_kts.write_text(text)
+          elif gradle_groovy.exists():
+              text = gradle_groovy.read_text().replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
+              gradle_groovy.write_text(text)
+          PY
       - name: Install dependencies
         run: flutter pub get
       - name: Build release APK

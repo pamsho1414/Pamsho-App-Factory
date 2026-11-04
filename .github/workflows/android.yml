@@ -2,12 +2,15 @@ name: Build Easy Simple Notes Android APK
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   verify-and-build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -30,6 +33,9 @@ jobs:
           source = manifest.read_text()
           source = re.sub(r'android:label="[^"]+"', 'android:label="Easy Simple Notes"', source, count=1)
           source = re.sub(r'android:icon="[^"]+"', 'android:icon="@mipmap/ic_launcher"', source, count=1)
+          if "com.google.android.gms.ads.APPLICATION_ID" not in source:
+              meta = '    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3329079275659359~2231313524" />'
+              source = source.replace("</application>", meta + "\n    </application>")
           manifest.write_text(source)
           res = root / "res"
           (res / "mipmap-anydpi-v26").mkdir(parents=True, exist_ok=True)
@@ -107,8 +113,84 @@ jobs:
           PY
       - run: flutter analyze
       - run: flutter test
-      - name: Build release APK
+      - name: Build smoke-test APK with Google's test banner
+        run: flutter build apk --debug --dart-define=ADMOB_BANNER_AD_UNIT_ID=ca-app-pub-3940256099942544/6300978111
+      - name: Build production release APK with live banner unit
         run: flutter build apk --release
+      - name: Free disk space before emulator boot
+        run: |
+          set -euxo pipefail
+          echo "Disk usage before cleanup:"
+          df -h /
+          sudo rm -rf /usr/local/lib/android/sdk/ndk/*
+          sudo rm -rf /usr/local/lib/android/sdk/cmake/*
+          rm -rf ~/.gradle/caches
+          sudo apt-get clean
+          echo "Disk usage after cleanup:"
+          df -h /
+          AVAILABLE_KB="$(df -Pk / | awk 'NR==2 {print $4}')"
+          if [ "$AVAILABLE_KB" -lt 4000000 ]; then
+            echo "Less than 4 GB remains for Android emulator system-image installation."
+            exit 1
+          fi
+      - name: Enable KVM for Android emulator
+        run: |
+          set -euxo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "KVM device /dev/kvm is unavailable on this runner."
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 666 /dev/kvm
+          ls -l /dev/kvm
+      - name: Initialize Android Debug Bridge
+        run: |
+          set -euxo pipefail
+          adb version
+          adb start-server
+          adb devices -l
+      - name: Cold-start test on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 2048
+          disable-animations: true
+          script: |
+            set -e
+            adb -s emulator-5554 wait-for-device
+            adb -s emulator-5554 install -r build/app/outputs/flutter-apk/app-debug.apk
+            adb -s emulator-5554 shell am force-stop com.pamsho.pamsho_notes
+            adb -s emulator-5554 logcat -c
+
+            echo "Resolving launcher activity..."
+            RESOLVED_ACTIVITY="$(adb -s emulator-5554 shell cmd package resolve-activity --brief com.pamsho.pamsho_notes | tr -d '\r' | tail -n 1)"
+            echo "Resolved activity: $RESOLVED_ACTIVITY"
+            test -n "$RESOLVED_ACTIVITY" || { echo 'No launchable activity found for the installed app.'; adb -s emulator-5554 logcat -d -t 1000; exit 1; }
+
+            echo "Launching app explicitly..."
+            START_RESULT="$(adb -s emulator-5554 shell am start -W -n "$RESOLVED_ACTIVITY" 2>&1)"
+            echo "$START_RESULT"
+            echo "$START_RESULT" | grep -q 'Status: ok' || { echo 'Android ActivityManager did not report a successful app launch.'; adb -s emulator-5554 logcat -d -t 1000; exit 1; }
+
+            sleep 10
+            TOP_ACTIVITY="$(adb -s emulator-5554 shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | grep -F 'com.pamsho.pamsho_notes' || true)"
+            APP_PROCESS="$(adb -s emulator-5554 shell ps -A | grep -F 'com.pamsho.pamsho_notes' || true)"
+            echo "Resumed app activity: $TOP_ACTIVITY"
+            echo "App process: $APP_PROCESS"
+            test -n "$TOP_ACTIVITY" || { echo 'The notes app did not remain in the foreground after launch.'; adb -s emulator-5554 logcat -d -v threadtime -t 2000; adb -s emulator-5554 shell dumpsys activity activities; exit 1; }
+            if [ -z "$APP_PROCESS" ]; then
+              echo 'Warning: process listing did not return the package name; foreground activity check passed.'
+            fi
+
+            APP_CRASH="$(adb -s emulator-5554 logcat -d -v threadtime -t 2000 | grep -E 'FATAL EXCEPTION|Fatal signal [0-9]+|Process: com\\.pamsho\\.pamsho_notes' || true)"
+            test -z "$APP_CRASH" || { echo "$APP_CRASH"; echo 'Fatal crash marker detected during app cold start.'; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: easy-simple-notes-release-apk

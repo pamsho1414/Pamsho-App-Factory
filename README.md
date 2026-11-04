@@ -9,7 +9,7 @@ A clean, lightweight Android notes app built with Flutter.
 - Restore notes from the Bin or permanently delete them after confirmation.
 - Light and dark themes with six accent colours.
 - Export and restore full JSON backups, including pinned notes, categories, colours, and the Bin.
-- Local, offline-first storage; no account is required.
+- Local, offline-first storage; no account is required. The development build uses Google's official AdMob test banner unit only; no live ads are requested during this testing phase.
 
 ## Android release build
 The GitHub Actions workflow runs Flutter static analysis, automated tests, and a release APK build on every push to `main`. The APK is uploaded as the `easy-simple-notes-release-apk` workflow artifact and is available for 14 days.

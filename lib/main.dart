@@ -1,9 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Initialize ads without delaying app startup. A failure must not stop notes from opening.
+  unawaited(MobileAds.instance.initialize().catchError((Object error) {
+    debugPrint('AdMob initialization failed: $error');
+  }));
   runApp(const PamshoNotesApp());
 }
 
@@ -143,7 +148,7 @@ class _NotesHomePageState extends State<NotesHomePage> {
       ),
       bottomNavigationBar: const SafeArea(
         top: false,
-        child: SizedBox(height: 50),
+        child: PamshoBannerAd(),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openEditor(),
@@ -327,3 +332,63 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   );
 }
 
+
+
+/// Google test banner only. Replace with the production unit after store listing
+/// and AdMob app-readiness approval.
+class PamshoBannerAd extends StatefulWidget {
+  const PamshoBannerAd({super.key});
+
+  @override
+  State<PamshoBannerAd> createState() => _PamshoBannerAdState();
+}
+
+class _PamshoBannerAdState extends State<PamshoBannerAd> {
+  BannerAd? _bannerAd;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBanner();
+  }
+
+  void _loadBanner() {
+    final banner = BannerAd(
+      adUnitId: 'ca-app-pub-3940256099942544/6300978111',
+      request: const AdRequest(),
+      size: AdSize.banner,
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          if (!mounted) {
+            ad.dispose();
+            return;
+          }
+          setState(() => _bannerAd = ad as BannerAd);
+        },
+        onAdFailedToLoad: (ad, error) {
+          debugPrint('Test banner failed to load: $error');
+          ad.dispose();
+        },
+      ),
+    );
+    banner.load();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final banner = _bannerAd;
+    return SizedBox(
+      height: 50,
+      width: double.infinity,
+      child: banner == null
+          ? const SizedBox.shrink()
+          : Center(child: AdWidget(ad: banner)),
+    );
+  }
+}

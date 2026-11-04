@@ -360,8 +360,8 @@ class _EditorState extends State<Editor> {
     final current = body.value;
     final text = current.text;
     final selection = current.selection;
-    final start = selection.isValid ? selection.start.clamp(0, text.length) as int : text.length;
-    final end = selection.isValid ? selection.end.clamp(start, text.length) as int : start;
+    final start = selection.isValid ? selection.start.clamp(0, text.length) : text.length;
+    final end = selection.isValid ? selection.end.clamp(start, text.length) : start;
     final lineStart = text.lastIndexOf('\n', start - 1) + 1;
     var lineEnd = text.indexOf('\n', end);
     if (lineEnd < 0) lineEnd = text.length;
@@ -432,7 +432,7 @@ class _EditorState extends State<Editor> {
         style: TextStyle(fontSize: 11, color: Theme.of(c).colorScheme.onSurfaceVariant),
       ),
     ),
-  ]))))));
+  ])))));
 }
 
 class Bin extends StatelessWidget {

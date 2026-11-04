@@ -2,6 +2,8 @@ name: Build Easy Simple Notes Android APK
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -31,8 +33,8 @@ jobs:
           source = re.sub(r'android:label="[^"]+"', 'android:label="Easy Simple Notes"', source, count=1)
           source = re.sub(r'android:icon="[^"]+"', 'android:icon="@mipmap/ic_launcher"', source, count=1)
           if "com.google.android.gms.ads.APPLICATION_ID" not in source:
-              meta = '    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3329079275659359~2231313524" />'
-              source = source.replace("</application>", meta + "\\n    </application>")
+              meta = '    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713" />'
+              source = source.replace("</application>", meta + "\n    </application>")
           manifest.write_text(source)
           res = root / "res"
           (res / "mipmap-anydpi-v26").mkdir(parents=True, exist_ok=True)

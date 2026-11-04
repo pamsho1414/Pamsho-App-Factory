@@ -1,394 +1,101 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Initialize ads without delaying app startup. A failure must not stop notes from opening.
-  unawaited(MobileAds.instance.initialize().catchError((Object error) {
-    debugPrint('AdMob initialization failed: $error');
-  }));
-  runApp(const PamshoNotesApp());
-}
-
-class PamshoNotesApp extends StatelessWidget {
-  const PamshoNotesApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    const ink = Color(0xFF17212B);
-    const accent = Color(0xFF426BEB);
-    return MaterialApp(
-      title: 'Pamsho Notes',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: accent, brightness: Brightness.light),
-        scaffoldBackgroundColor: const Color(0xFFF5F7FB),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFF5F7FB),
-          foregroundColor: ink,
-          elevation: 0,
-          centerTitle: false,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        ),
-      ),
-      home: const NotesHomePage(),
-    );
-  }
-}
+Future<void> main() async { WidgetsFlutterBinding.ensureInitialized(); runApp(const NotesApp()); }
+const seed = Color(0xFF5267D8);
 
 class Note {
-  const Note({required this.id, required this.title, required this.body, required this.updatedAt});
-  final String id;
-  final String title;
-  final String body;
-  final DateTime updatedAt;
-
-  Map<String, Object> toMap() => {
-    'id': id, 'title': title, 'body': body, 'updatedAt': updatedAt.toIso8601String(),
-  };
-
-  factory Note.fromMap(Map<String, dynamic> map) => Note(
-    id: map['id'] as String,
-    title: map['title'] as String,
-    body: map['body'] as String,
-    updatedAt: DateTime.parse(map['updatedAt'] as String),
-  );
+  const Note(this.id, this.title, this.body, this.updated);
+  final String id, title, body;
+  final DateTime updated;
+  Map<String,dynamic> json() => {'id':id,'title':title,'body':body,'updated':updated.toIso8601String()};
+  factory Note.from(Map<String,dynamic> m) => Note(m['id'],m['title'],m['body'],DateTime.parse(m['updated']));
 }
 
-class NotesHomePage extends StatefulWidget {
-  const NotesHomePage({super.key});
-  @override
-  State<NotesHomePage> createState() => _NotesHomePageState();
+class NotesStore extends ChangeNotifier {
+  static const activeKey='simple_notes_active_v2', binKey='simple_notes_bin_v2';
+  List<Note> notes=[], bin=[]; bool ready=false;
+  Future<void> load() async {
+    final p=await SharedPreferences.getInstance();
+    notes=_read(p.getString(activeKey)); bin=_read(p.getString(binKey));
+    _sort(); ready=true; notifyListeners();
+  }
+  List<Note> _read(String? s) { try { return s==null ? [] : (jsonDecode(s) as List).map((e)=>Note.from(Map<String,dynamic>.from(e))).toList(); } catch(e) { debugPrint('Notes load error: $e'); return []; } }
+  void _sort() { notes.sort((a,b)=>b.updated.compareTo(a.updated)); bin.sort((a,b)=>b.updated.compareTo(a.updated)); }
+  Future<void> _save() async { final p=await SharedPreferences.getInstance(); await p.setString(activeKey,jsonEncode(notes.map((n)=>n.json()).toList())); await p.setString(binKey,jsonEncode(bin.map((n)=>n.json()).toList())); }
+  Future<void> upsert(Note n) async { notes.removeWhere((x)=>x.id==n.id); bin.removeWhere((x)=>x.id==n.id); notes.add(n); _sort(); await _save(); notifyListeners(); }
+  Future<void> trash(Note n) async { notes.removeWhere((x)=>x.id==n.id); bin.removeWhere((x)=>x.id==n.id); bin.add(n); _sort(); await _save(); notifyListeners(); }
+  Future<void> restore(Note n) async { bin.removeWhere((x)=>x.id==n.id); notes.removeWhere((x)=>x.id==n.id); notes.add(n); _sort(); await _save(); notifyListeners(); }
+  Future<void> erase(Note n) async { bin.removeWhere((x)=>x.id==n.id); await _save(); notifyListeners(); }
+  Future<void> empty() async { bin.clear(); await _save(); notifyListeners(); }
 }
 
-class _NotesHomePageState extends State<NotesHomePage> {
-  static const _storageKey = 'pamsho_notes_v1';
-  List<Note> _notes = [];
-  bool _loading = true;
-  String _query = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadNotes();
-  }
-
-  Future<void> _loadNotes() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_storageKey) ?? [];
-    final loaded = <Note>[];
-    for (final item in raw) {
-      try {
-        final decoded = Uri.decodeComponent(item);
-        final parts = decoded.split('|');
-        if (parts.length == 4) {
-          loaded.add(Note(id: parts[0], title: parts[1], body: parts[2], updatedAt: DateTime.parse(parts[3])));
-        }
-      } catch (_) {
-        // Ignore an unreadable old entry rather than preventing the app from opening.
-      }
-    }
-    if (!mounted) return;
-    setState(() {
-      _notes = loaded..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-      _loading = false;
-    });
-  }
-
-  Future<void> _persist() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = _notes.map((n) => Uri.encodeComponent('${n.id}|${n.title}|${n.body}|${n.updatedAt.toIso8601String()}')).toList();
-    await prefs.setStringList(_storageKey, raw);
-  }
-
-  Future<void> _upsertNote(Note note) async {
-    if (!mounted) return;
-    setState(() {
-      _notes.removeWhere((n) => n.id == note.id);
-      _notes.add(note);
-      _notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    });
-    await _persist();
-  }
-
-  Future<void> _openEditor({Note? note}) async {
-    final result = await Navigator.of(context).push<Note>(
-      MaterialPageRoute(builder: (_) => NoteEditorPage(note: note, onAutoSave: _upsertNote)),
-    );
-    if (result != null) await _upsertNote(result);
-  }
-
-  Future<void> _deleteNote(Note note) async {
-    setState(() => _notes.removeWhere((n) => n.id == note.id));
-    await _persist();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Note deleted')));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final visible = _notes.where((n) => ('${n.title} ${n.body}').toLowerCase().contains(_query.toLowerCase())).toList();
-    return Scaffold(
-      appBar: AppBar(
-        title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Pamsho Notes', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 23)),
-          Text('Your thoughts, neatly saved', style: TextStyle(fontSize: 12, color: Color(0xFF788392))),
-        ]),
-        actions: [
-          IconButton(tooltip: 'About', onPressed: () => showAboutDialog(context: context, applicationName: 'Pamsho Notes', applicationVersion: '1.0.0', applicationLegalese: 'Simple notes, fast save.'), icon: const Icon(Icons.info_outline)),
-        ],
-      ),
-      bottomNavigationBar: const SafeArea(
-        top: false,
-        child: PamshoBannerAd(),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openEditor(),
-        icon: const Icon(Icons.add),
-        label: const Text('New note'),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 90),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            TextField(
-              onChanged: (value) => setState(() => _query = value),
-              decoration: const InputDecoration(hintText: 'Search your notes', prefixIcon: Icon(Icons.search)),
-            ),
-            const SizedBox(height: 22),
-            Row(children: [
-              const Text('All notes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF17212B))),
-              const Spacer(),
-              Text('${_notes.length} ${_notes.length == 1 ? 'note' : 'notes'}', style: const TextStyle(color: Color(0xFF788392), fontWeight: FontWeight.w600)),
-            ]),
-            const SizedBox(height: 12),
-            Expanded(
-              child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : visible.isEmpty
-                  ? _EmptyState(searching: _query.isNotEmpty, onCreate: () => _openEditor())
-                  : ListView.separated(
-                      itemCount: visible.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final note = visible[index];
-                        return Dismissible(
-                          key: ValueKey(note.id),
-                          direction: DismissDirection.endToStart,
-                          onDismissed: (_) => _deleteNote(note),
-                          background: Container(
-                            alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.only(right: 22),
-                            decoration: BoxDecoration(color: const Color(0xFFFFE8E8), borderRadius: BorderRadius.circular(18)),
-                            child: const Icon(Icons.delete_outline, color: Colors.red),
-                          ),
-                          child: Material(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(18),
-                              onTap: () => _openEditor(note: note),
-                              child: Padding(
-                                padding: const EdgeInsets.all(17),
-                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text(note.title.isEmpty ? 'Untitled note' : note.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF17212B))),
-                                  if (note.body.isNotEmpty) ...[
-                                    const SizedBox(height: 7),
-                                    Text(note.body, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(height: 1.4, color: Color(0xFF687586))),
-                                  ],
-                                  const SizedBox(height: 12),
-                                  Text(_formatDate(note.updatedAt), style: const TextStyle(fontSize: 11, color: Color(0xFF9AA4B1))),
-                                ]),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  String _formatDate(DateTime date) => '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+class NotesApp extends StatefulWidget { const NotesApp({super.key}); @override State<NotesApp> createState()=>_NotesAppState(); }
+class _NotesAppState extends State<NotesApp> {
+  final store=NotesStore(); bool dark=false; Color accent=seed;
+  @override void initState(){ super.initState(); store.load(); _settings(); }
+  Future<void> _settings() async { final p=await SharedPreferences.getInstance(); if(mounted)setState((){dark=p.getBool('dark')??false; accent=Color(p.getInt('accent')??seed.toARGB32());}); }
+  Future<void> setDark(bool v) async { setState(()=>dark=v); final p=await SharedPreferences.getInstance(); await p.setBool('dark',v); }
+  Future<void> setAccent(Color c) async { setState(()=>accent=c); final p=await SharedPreferences.getInstance(); await p.setInt('accent',c.toARGB32()); }
+  ThemeData theme(Brightness b) { final cs=ColorScheme.fromSeed(seedColor:accent,brightness:b); return ThemeData(useMaterial3:true,colorScheme:cs,scaffoldBackgroundColor:b==Brightness.light?const Color(0xFFF1F3F9):const Color(0xFF111521),appBarTheme:AppBarTheme(backgroundColor:b==Brightness.light?const Color(0xFFF1F3F9):const Color(0xFF111521),foregroundColor:cs.onSurface,elevation:0),cardTheme:CardThemeData(color:b==Brightness.light?Colors.white:const Color(0xFF1E2635),elevation:0,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(19))),inputDecorationTheme:InputDecorationTheme(filled:true,fillColor:b==Brightness.light?Colors.white:const Color(0xFF202839),border:OutlineInputBorder(borderRadius:BorderRadius.circular(16),borderSide:BorderSide.none))); }
+  @override void dispose(){store.dispose();super.dispose();}
+  @override Widget build(BuildContext c)=>AnimatedBuilder(animation:store,builder:(c,_)=>
+    MaterialApp(debugShowCheckedModeBanner:false,title:'Simple Notes',theme:theme(Brightness.light),darkTheme:theme(Brightness.dark),themeMode:dark?ThemeMode.dark:ThemeMode.light,
+      home:Home(store:store,dark:dark,accent:accent,onDark:setDark,onAccent:setAccent)));
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.searching, required this.onCreate});
-  final bool searching;
-  final VoidCallback onCreate;
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Container(width: 76, height: 76, decoration: BoxDecoration(color: const Color(0xFFE8EEFF), borderRadius: BorderRadius.circular(24)), child: const Icon(Icons.sticky_note_2_outlined, size: 36, color: Color(0xFF426BEB))),
-      const SizedBox(height: 18),
-      Text(searching ? 'No matching notes' : 'Nothing here yet', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-      const SizedBox(height: 7),
-      Text(searching ? 'Try another search.' : 'Create your first note and keep ideas close.', textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF788392))),
-      if (!searching) ...[
-        const SizedBox(height: 18),
-        OutlinedButton.icon(onPressed: onCreate, icon: const Icon(Icons.add), label: const Text('Create a note')),
-      ],
-    ]),
-  );
+class Home extends StatefulWidget {
+  const Home({super.key,required this.store,required this.dark,required this.accent,required this.onDark,required this.onAccent});
+  final NotesStore store; final bool dark; final Color accent; final ValueChanged<bool> onDark; final ValueChanged<Color> onAccent;
+  @override State<Home> createState()=>_HomeState();
+}
+class _HomeState extends State<Home> {
+  String query='';
+  Future<void> edit([Note? n]) async { await Navigator.push(context,MaterialPageRoute(builder:(_)=>Editor(store:widget.store,note:n))); }
+  Future<void> actions(Note n) async {
+    final v=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      ListTile(leading:const Icon(Icons.edit_outlined),title:const Text('Edit note'),onTap:()=>Navigator.pop(c,'edit')),
+      ListTile(leading:Icon(Icons.delete_outline,color:Theme.of(c).colorScheme.error),title:const Text('Move to Bin'),onTap:()=>Navigator.pop(c,'bin')),
+      const SizedBox(height:12)])));
+    if(v=='edit') await edit(n); if(v=='bin'){await widget.store.trash(n); if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Moved to Bin')));}
+  }
+  @override Widget build(BuildContext c) {
+    final t=Theme.of(c), list=widget.store.notes.where((n)=>'${n.title} ${n.body}'.toLowerCase().contains(query.toLowerCase())).toList();
+    return Scaffold(appBar:AppBar(title:const Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Simple Notes',style:TextStyle(fontSize:24,fontWeight:FontWeight.w800)),Text('Your space for thoughts',style:TextStyle(fontSize:12))]),actions:[
+      IconButton(tooltip:'Bin',onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>Bin(store:widget.store))),icon:Badge(isLabelVisible:widget.store.bin.isNotEmpty,label:Text('${widget.store.bin.length}'),child:const Icon(Icons.delete_sweep_outlined))),
+      IconButton(tooltip:'Settings',onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>Settings(dark:widget.dark,accent:widget.accent,onDark:widget.onDark,onAccent:widget.onAccent))),icon:const Icon(Icons.tune_rounded)),const SizedBox(width:5)]),
+      floatingActionButton:FloatingActionButton.extended(onPressed:()=>edit(),icon:const Icon(Icons.add),label:const Text('New note')),
+      body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(18,8,18,90),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        TextField(onChanged:(v)=>setState(()=>query=v),decoration:const InputDecoration(hintText:'Search notes',prefixIcon:Icon(Icons.search))),
+        const SizedBox(height:23),Row(children:[const Text('All notes',style:TextStyle(fontWeight:FontWeight.w800,fontSize:18)),const Spacer(),Text('${list.length} notes',style:TextStyle(color:t.colorScheme.onSurfaceVariant))]),const SizedBox(height:12),
+        Expanded(child:!widget.store.ready?const Center(child:CircularProgressIndicator()):list.isEmpty?Center(child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[Icon(Icons.sticky_note_2_outlined,size:58,color:t.colorScheme.primary),const SizedBox(height:14),Text(query.isEmpty?'A fresh page awaits':'No notes found',style:const TextStyle(fontSize:18,fontWeight:FontWeight.w800)),const SizedBox(height:7),Text(query.isEmpty?'Capture your ideas and reminders.':'Try another keyword.',style:TextStyle(color:t.colorScheme.onSurfaceVariant)),if(query.isEmpty)TextButton.icon(onPressed:()=>edit(),icon:const Icon(Icons.add),label:const Text('Write your first note'))])):ListView.separated(itemCount:list.length,separatorBuilder:(_,__)=>const SizedBox(height:10),itemBuilder:(c,i){final n=list[i];return GestureDetector(onLongPress:()=>actions(n),child:Card(child:InkWell(borderRadius:BorderRadius.circular(19),onTap:()=>edit(n),child:Padding(padding:const EdgeInsets.all(17),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Row(children:[Expanded(child:Text(n.title.isEmpty?'Untitled note':n.title,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w800))),Icon(Icons.more_horiz,color:t.colorScheme.onSurfaceVariant)]),if(n.body.isNotEmpty)...[const SizedBox(height:7),Text(n.body,maxLines:3,overflow:TextOverflow.ellipsis,style:TextStyle(height:1.4,color:t.colorScheme.onSurfaceVariant))],const SizedBox(height:12),Text(dateText(n.updated),style:TextStyle(fontSize:11,color:t.colorScheme.onSurfaceVariant))]))));})),
+      ]))));
+  }
 }
 
-class NoteEditorPage extends StatefulWidget {
-  const NoteEditorPage({super.key, this.note, required this.onAutoSave});
-  final Note? note;
-  final Future<void> Function(Note) onAutoSave;
-  @override
-  State<NoteEditorPage> createState() => _NoteEditorPageState();
+class Editor extends StatefulWidget { const Editor({super.key,required this.store,this.note}); final NotesStore store; final Note? note; @override State<Editor> createState()=>_EditorState(); }
+class _EditorState extends State<Editor> {
+  late final TextEditingController title,body; late final String id; Timer? timer; bool changed=false,saving=false,saved=false;
+  @override void initState(){super.initState();id=widget.note?.id??DateTime.now().microsecondsSinceEpoch.toString();title=TextEditingController(text:widget.note?.title??'');body=TextEditingController(text:widget.note?.body??'');title.addListener(schedule);body.addListener(schedule);}
+  void schedule(){changed=true;timer?.cancel();if(mounted)setState(()=>saving=true);timer=Timer(const Duration(milliseconds:500),save);}
+  Future<void> save() async {if(!changed)return;if(title.text.trim().isEmpty&&body.text.trim().isEmpty){if(mounted)setState(()=>saving=false);return;}try{await widget.store.upsert(Note(id,title.text.trim(),body.text.trim(),DateTime.now()));changed=false;if(mounted)setState(()=>{saving=false,saved=true});}catch(e){debugPrint('Save failed: $e');if(mounted)setState(()=>saving=false);}}
+  Future<void> finish() async {timer?.cancel();await save();if(mounted)Navigator.pop(context);}
+  @override void dispose(){timer?.cancel();title.dispose();body.dispose();super.dispose();}
+  @override Widget build(BuildContext c)=>PopScope(canPop:false,onPopInvokedWithResult:(didPop,result){if(!didPop)finish();},child:Scaffold(appBar:AppBar(leading:IconButton(onPressed:finish,icon:const Icon(Icons.arrow_back)),title:Text(widget.note==null?'New note':'Edit note',style:const TextStyle(fontWeight:FontWeight.w800)),actions:[Padding(padding:const EdgeInsets.only(right:16),child:Center(child:Text(saving?'Saving…':saved?'Saved':'Auto-save',style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant))))]),body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,20),child:Column(children:[TextField(controller:title,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:25,fontWeight:FontWeight.w800),decoration:const InputDecoration(hintText:'Title',filled:false)),const SizedBox(height:12),Expanded(child:TextField(controller:body,expands:true,minLines:null,maxLines:null,textAlignVertical:TextAlignVertical.top,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:16,height:1.6),decoration:const InputDecoration(hintText:'Start writing your thoughts…',filled:false)))])))));
 }
 
-class _NoteEditorPageState extends State<NoteEditorPage> {
-  late final TextEditingController _title;
-  late final TextEditingController _body;
-  Timer? _saveTimer;
-  late final String _noteId;
-  bool _saving = false;
-  bool _saved = false;
-
-  bool get _hasContent => _title.text.trim().isNotEmpty || _body.text.trim().isNotEmpty;
-
-  @override
-  void initState() {
-    super.initState();
-    _noteId = widget.note?.id ?? DateTime.now().microsecondsSinceEpoch.toString();
-    _title = TextEditingController(text: widget.note?.title ?? '');
-    _body = TextEditingController(text: widget.note?.body ?? '');
-    _title.addListener(_scheduleAutoSave);
-    _body.addListener(_scheduleAutoSave);
-  }
-
-  void _scheduleAutoSave() {
-    _saveTimer?.cancel();
-    if (!_hasContent) return;
-    setState(() { _saving = true; _saved = false; });
-    _saveTimer = Timer(const Duration(milliseconds: 650), _autoSave);
-  }
-
-  Future<void> _autoSave() async {
-    if (!_hasContent) return;
-    final note = Note(id: _noteId, title: _title.text.trim(), body: _body.text.trim(), updatedAt: DateTime.now());
-    await widget.onAutoSave(note);
-    if (mounted) setState(() { _saving = false; _saved = true; });
-  }
-
-  Future<void> _finish() async {
-    _saveTimer?.cancel();
-    if (_hasContent) await _autoSave();
-    if (mounted) Navigator.pop(context);
-  }
-
-  @override
-  void dispose() {
-    _saveTimer?.cancel();
-    _title.dispose();
-    _body.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: false,
-    onPopInvokedWithResult: (didPop, result) { if (!didPop) _finish(); },
-    child: Scaffold(
-      backgroundColor: const Color(0xFFFAF9F6),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFFAF9F6),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _finish),
-        title: Text(widget.note == null ? 'New note' : 'Edit note', style: const TextStyle(fontWeight: FontWeight.w800)),
-        actions: [Padding(
-          padding: const EdgeInsets.only(right: 16),
-          child: Center(child: Text(_saving ? 'Saving…' : (_saved ? 'Saved' : 'Auto-save on'),
-            style: const TextStyle(fontSize: 12, color: Color(0xFF788392), fontWeight: FontWeight.w600))),
-        )],
-      ),
-      body: SafeArea(child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-        child: Column(children: [
-          TextField(controller: _title, textCapitalization: TextCapitalization.sentences,
-            style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: Color(0xFF253044)),
-            decoration: const InputDecoration(hintText: 'Title', filled: false)),
-          const SizedBox(height: 12),
-          Expanded(child: TextField(controller: _body, expands: true, maxLines: null, minLines: null,
-            textCapitalization: TextCapitalization.sentences, textAlignVertical: TextAlignVertical.top,
-            style: const TextStyle(height: 1.55, color: Color(0xFF354052)),
-            decoration: const InputDecoration(hintText: 'Start writing...', filled: false))),
-        ]),
-      )),
-    ),
-  );
+class Bin extends StatelessWidget {
+  const Bin({super.key,required this.store}); final NotesStore store;
+  Future<void> emptyBin(BuildContext c) async {final yes=await showDialog<bool>(context:c,builder:(d)=>AlertDialog(title:const Text('Empty Bin?'),content:const Text('These notes will be permanently deleted.'),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Empty Bin'))]));if(yes==true)await store.empty();}
+  @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('Bin',style:TextStyle(fontWeight:FontWeight.w800)),actions:[if(store.bin.isNotEmpty)TextButton(onPressed:()=>emptyBin(c),child:const Text('Empty'))]),body:store.bin.isEmpty?const Center(child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[Icon(Icons.delete_outline,size:56),SizedBox(height:12),Text('Your Bin is empty',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800)),Text('Deleted notes will appear here.')])):ListView.separated(padding:const EdgeInsets.all(18),itemCount:store.bin.length,separatorBuilder:(_,__)=>const SizedBox(height:10),itemBuilder:(c,i){final n=store.bin[i];return Card(child:Padding(padding:const EdgeInsets.all(15),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(n.title.isEmpty?'Untitled note':n.title,style:const TextStyle(fontWeight:FontWeight.w800)),if(n.body.isNotEmpty)Text(n.body,maxLines:2,overflow:TextOverflow.ellipsis),Row(children:[TextButton.icon(onPressed:()=>store.restore(n),icon:const Icon(Icons.restore),label:const Text('Restore')),const Spacer(),IconButton(tooltip:'Delete permanently',onPressed:()async{final yes=await showDialog<bool>(context:c,builder:(d)=>AlertDialog(title:const Text('Delete permanently?'),content:const Text('This cannot be undone.'),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Delete'))]));if(yes==true)await store.erase(n);},icon:const Icon(Icons.delete_forever_outlined))])])));})) );
 }
 
-
-
-/// Google test banner only. Replace with the production unit after store listing
-/// and AdMob app-readiness approval.
-class PamshoBannerAd extends StatefulWidget {
-  const PamshoBannerAd({super.key});
-
-  @override
-  State<PamshoBannerAd> createState() => _PamshoBannerAdState();
+class Settings extends StatelessWidget {
+  const Settings({super.key,required this.dark,required this.accent,required this.onDark,required this.onAccent});
+  final bool dark; final Color accent; final ValueChanged<bool> onDark; final ValueChanged<Color> onAccent;
+  static const colors=[Color(0xFF5267D8),Color(0xFF168C83),Color(0xFF8A55C7),Color(0xFFE07845),Color(0xFFCA5278),Color(0xFF397DAF)];
+  @override Widget build(BuildContext c){final t=Theme.of(c);return Scaffold(appBar:AppBar(title:const Text('Settings',style:TextStyle(fontWeight:FontWeight.w800))),body:ListView(padding:const EdgeInsets.all(18),children:[Text('APPEARANCE',style:TextStyle(fontSize:11,letterSpacing:1.2,fontWeight:FontWeight.w800,color:t.colorScheme.onSurfaceVariant)),const SizedBox(height:10),Card(child:SwitchListTile(secondary:Icon(dark?Icons.dark_mode:Icons.light_mode),title:const Text('Dark mode',style:TextStyle(fontWeight:FontWeight.w700)),subtitle:Text(dark?'Dark appearance enabled':'Light appearance enabled'),value:dark,onChanged:onDark)),const SizedBox(height:23),Text('ACCENT COLOR',style:TextStyle(fontSize:11,letterSpacing:1.2,fontWeight:FontWeight.w800,color:t.colorScheme.onSurfaceVariant)),const SizedBox(height:12),Card(child:Padding(padding:const EdgeInsets.all(18),child:Wrap(spacing:15,runSpacing:15,children:colors.map((color)=>InkWell(customBorder:const CircleBorder(),onTap:()=>onAccent(color),child:Container(width:38,height:38,decoration:BoxDecoration(color:color,shape:BoxShape.circle,border:color.toARGB32()==accent.toARGB32()?Border.all(color:t.colorScheme.onSurface,width:3):null),child:color.toARGB32()==accent.toARGB32()?const Icon(Icons.check,color:Colors.white):null))).toList()))),const SizedBox(height:23),Text('ABOUT',style:TextStyle(fontSize:11,letterSpacing:1.2,fontWeight:FontWeight.w800,color:t.colorScheme.onSurfaceVariant)),const SizedBox(height:10),const Card(child:ListTile(leading:Icon(Icons.sticky_note_2_outlined),title:Text('Simple Notes'),subtitle:Text('A clean, private place for your ideas · Version 1.0'))),const SizedBox(height:12),Text('Notes are stored locally on this device. Clearing app data or uninstalling may remove them.',style:TextStyle(fontSize:12,height:1.5,color:t.colorScheme.onSurfaceVariant))]));}
 }
-
-class _PamshoBannerAdState extends State<PamshoBannerAd> {
-  BannerAd? _bannerAd;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadBanner();
-  }
-
-  void _loadBanner() {
-    final banner = BannerAd(
-      adUnitId: 'ca-app-pub-3940256099942544/6300978111',
-      request: const AdRequest(),
-      size: AdSize.banner,
-      listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          if (!mounted) {
-            ad.dispose();
-            return;
-          }
-          setState(() => _bannerAd = ad as BannerAd);
-        },
-        onAdFailedToLoad: (ad, error) {
-          debugPrint('Test banner failed to load: $error');
-          ad.dispose();
-        },
-      ),
-    );
-    banner.load();
-  }
-
-  @override
-  void dispose() {
-    _bannerAd?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final banner = _bannerAd;
-    return SizedBox(
-      height: 50,
-      width: double.infinity,
-      child: banner == null
-          ? const SizedBox.shrink()
-          : Center(child: AdWidget(ad: banner)),
-    );
-  }
-}
+String dateText(DateTime d)=>'${d.day.toString().padLeft(2,'0')}/${d.month.toString().padLeft(2,'0')}/${d.year} · ${d.hour.toString().padLeft(2,'0')}:${d.minute.toString().padLeft(2,'0')}';

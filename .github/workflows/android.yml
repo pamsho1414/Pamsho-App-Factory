@@ -75,7 +75,7 @@ jobs:
           marker = "com.google.android.gms.ads.APPLICATION_ID"
           if marker not in source:
               metadata = '        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3329079275659359~2231313524" />'
-              source = source.replace("</application>", metadata + "\\n    </application>")
+              source = source.replace("</application>", metadata + "\n    </application>")
               manifest.write_text(source)
           PY
       - run: flutter pub get

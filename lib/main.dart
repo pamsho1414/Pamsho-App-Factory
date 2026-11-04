@@ -81,6 +81,7 @@ class Home extends StatefulWidget {
 }
 class _HomeState extends State<Home> {
   String query='';
+  String sortMode='Newest';
   Future<void> edit([Note? n]) async { await Navigator.push(context,MaterialPageRoute(builder:(_)=>Editor(store:widget.store,note:n))); }
   Future<void> actions(Note n) async {
     final v=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
@@ -100,8 +101,33 @@ class _HomeState extends State<Home> {
     if(v=='bin'){await widget.store.trash(n); if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Moved to Bin')));}
   }
   @override Widget build(BuildContext c) {
-    final t=Theme.of(c), list=widget.store.notes.where((n)=>'${n.title} ${n.body}'.toLowerCase().contains(query.toLowerCase())).toList();
+    final t=Theme.of(c);
+    final list=widget.store.notes.where((n)=>'${n.title} ${n.body}'.toLowerCase().contains(query.toLowerCase())).toList();
+    list.sort((a,b) {
+      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+      switch (sortMode) {
+        case 'Oldest': return a.updated.compareTo(b.updated);
+        case 'A–Z': return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+        case 'Z–A': return b.title.toLowerCase().compareTo(a.title.toLowerCase());
+        default: return b.updated.compareTo(a.updated);
+      }
+    });
     return Scaffold(appBar:AppBar(title:const Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Easy Simple Notes',style:TextStyle(fontSize:24,fontWeight:FontWeight.w800)),Text('Your space for thoughts',style:TextStyle(fontSize:12))]),actions:[
+      PopupMenuButton<String>(
+        tooltip: 'Sort notes',
+        icon: const Icon(Icons.sort),
+        initialValue: sortMode,
+        onSelected: (value) => setState(() => sortMode = value),
+        itemBuilder: (_) => ['Newest', 'Oldest', 'A–Z', 'Z–A']
+            .map((value) => PopupMenuItem<String>(
+                  value: value,
+                  child: Row(children: [
+                    if (sortMode == value) const Icon(Icons.check, size: 18),
+                    if (sortMode == value) const SizedBox(width: 8),
+                    Text(value),
+                  ]),
+                )).toList(),
+      ),
       IconButton(tooltip:'Bin',onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>Bin(store:widget.store))),icon:Badge(isLabelVisible:widget.store.bin.isNotEmpty,label:Text('${widget.store.bin.length}'),child:const Icon(Icons.delete_sweep_outlined))),
       IconButton(tooltip:'Settings',onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>Settings(dark:widget.dark,accent:widget.accent,onDark:widget.onDark,onAccent:widget.onAccent))),icon:const Icon(Icons.tune_rounded)),const SizedBox(width:5)]),
       floatingActionButton:FloatingActionButton.extended(onPressed:()=>edit(),icon:const Icon(Icons.add),label:const Text('New note')),

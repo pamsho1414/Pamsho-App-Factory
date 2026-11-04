@@ -1,7 +1,7 @@
 name: Build Easy Simple Notes Android APK
 on:
   push:
-    branches: [main]
+    branches: [main, admob-reintegration]
   workflow_dispatch:
 permissions:
   contents: read
@@ -47,6 +47,18 @@ jobs:
           adaptive = """<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@color/ic_launcher_background"/><foreground android:drawable="@drawable/ic_launcher_foreground"/></adaptive-icon>"""
           (res / "mipmap-anydpi-v26" / "ic_launcher.xml").write_text(adaptive)
           (res / "mipmap-anydpi-v26" / "ic_launcher_round.xml").write_text(adaptive)
+          PY
+      - name: Add Google Mobile Ads application ID
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          source = manifest.read_text()
+          marker = "com.google.android.gms.ads.APPLICATION_ID"
+          if marker not in source:
+              metadata = '        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3329079275659359~2231313524" />'
+              source = source.replace("</application>", metadata + "\\n    </application>")
+              manifest.write_text(source)
           PY
       - name: Set Android minimum SDK
         run: |
@@ -108,7 +120,7 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - name: Build release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --dart-define=ADMOB_BANNER_AD_UNIT_ID=ca-app-pub-3329079275659359/5045179126
       - uses: actions/upload-artifact@v4
         with:
           name: easy-simple-notes-release-apk

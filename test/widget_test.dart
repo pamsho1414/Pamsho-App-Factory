@@ -109,7 +109,7 @@ void main() {
   });
 
   testWidgets('home screen opens with Easy Simple Notes branding', (tester) async {
-    await tester.pumpWidget(const NotesApp(enableAds: false));
+    await tester.pumpWidget(const NotesApp());
     await tester.pumpAndSettle();
     expect(find.text('Easy Simple Notes'), findsOneWidget);
     expect(find.text('All notes'), findsOneWidget);

@@ -102,8 +102,12 @@ jobs:
                           if re.match(r"^\s*compileSdk(?:Version)?\s*(?:=\s*)?(?:flutter\.compileSdkVersion|\d+)\s*$", line):
                               found.append(f"{path}: {line.strip()}")
                               indent = line[:len(line) - len(line.lstrip())]
-                              key = "compileSdkVersion" if "compileSdkVersion" in line else "compileSdk"
-                              line = f"{indent}{key} = 36" if path.name.endswith(".kts") or key == "compileSdk" else f"{indent}{key} 36"
+                              if path.name.endswith(".kts"):
+                                  line = f"{indent}compileSdk = 36"
+                              elif "compileSdkVersion" in line:
+                                  line = f"{indent}compileSdkVersion 36"
+                              else:
+                                  line = f"{indent}compileSdk = 36"
                               touched = True
                           output.append(line)
                       if touched:

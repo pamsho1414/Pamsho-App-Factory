@@ -7,12 +7,13 @@ Future<void> main() async { WidgetsFlutterBinding.ensureInitialized(); runApp(co
 const seed = Color(0xFF5267D8);
 
 class Note {
-  const Note(this.id, this.title, this.body, this.updated, {this.pinned = false, this.category = 'General'});
+  const Note(this.id, this.title, this.body, this.updated, {this.pinned = false, this.category = 'General', this.colorValue = 0});
   final String id, title, body, category;
   final DateTime updated;
   final bool pinned;
-  Map<String,dynamic> json() => {'id':id,'title':title,'body':body,'updated':updated.toIso8601String(),'pinned':pinned,'category':category};
-  factory Note.from(Map<String,dynamic> m) => Note(m['id'],m['title'],m['body'],DateTime.parse(m['updated']),pinned: m['pinned'] == true, category: m['category'] as String? ?? 'General');
+  final int colorValue;
+  Map<String,dynamic> json() => {'id':id,'title':title,'body':body,'updated':updated.toIso8601String(),'pinned':pinned,'category':category,'colorValue':colorValue};
+  factory Note.from(Map<String,dynamic> m) => Note(m['id'],m['title'],m['body'],DateTime.parse(m['updated']),pinned: m['pinned'] == true, category: m['category'] as String? ?? 'General', colorValue: m['colorValue'] as int? ?? 0);
 }
 
 class NotesStore extends ChangeNotifier {
@@ -48,7 +49,7 @@ class NotesStore extends ChangeNotifier {
   Future<void> upsert(Note n) async { notes.removeWhere((x)=>x.id==n.id); bin.removeWhere((x)=>x.id==n.id); notes.add(n); _sort(); await _save(); notifyListeners(); }
   Future<void> trash(Note n) async { notes.removeWhere((x)=>x.id==n.id); bin.removeWhere((x)=>x.id==n.id); bin.add(n); _sort(); await _save(); notifyListeners(); }
   Future<void> togglePin(Note n) async {
-    final updated = Note(n.id, n.title, n.body, n.updated, pinned: !n.pinned);
+    final updated = Note(n.id, n.title, n.body, n.updated, pinned: !n.pinned, category: n.category, colorValue: n.colorValue);
     notes.removeWhere((x) => x.id == n.id);
     notes.add(updated);
     _sort();
@@ -182,6 +183,7 @@ class _HomeState extends State<Home> {
                         return GestureDetector(
                           onLongPress: () => actions(note),
                           child: Card(
+                            color: note.colorValue == 0 ? null : Color(note.colorValue),
                             child: InkWell(
                               borderRadius: BorderRadius.circular(19),
                               onTap: () => edit(note),
@@ -243,10 +245,10 @@ class _HomeState extends State<Home> {
 
 class Editor extends StatefulWidget { const Editor({super.key,required this.store,this.note}); final NotesStore store; final Note? note; @override State<Editor> createState()=>_EditorState(); }
 class _EditorState extends State<Editor> {
-  late final TextEditingController title,body; late final String id; late String category; Timer? timer; bool changed=false,saving=false,saved=false;
-  @override void initState(){super.initState();id=widget.note?.id??DateTime.now().microsecondsSinceEpoch.toString();category=widget.note?.category??'General';title=TextEditingController(text:widget.note?.title??'');body=TextEditingController(text:widget.note?.body??'');title.addListener(schedule);body.addListener(schedule);}
+  late final TextEditingController title,body; late final String id; late String category; late int colorValue; Timer? timer; bool changed=false,saving=false,saved=false;
+  @override void initState(){super.initState();id=widget.note?.id??DateTime.now().microsecondsSinceEpoch.toString();category=widget.note?.category??'General';colorValue=widget.note?.colorValue??0;title=TextEditingController(text:widget.note?.title??'');body=TextEditingController(text:widget.note?.body??'');title.addListener(schedule);body.addListener(schedule);}
   void schedule(){changed=true;timer?.cancel();if(mounted)setState(()=>saving=true);timer=Timer(const Duration(milliseconds:500),save);}
-  Future<void> save() async {if(!changed)return;if(title.text.trim().isEmpty&&body.text.trim().isEmpty){if(mounted)setState(()=>saving=false);return;}try{await widget.store.upsert(Note(id,title.text.trim(),body.text.trim(),DateTime.now(),pinned:widget.note?.pinned??false,category:category));changed=false;if(mounted)setState(() { saving=false; saved=true; });}catch(e){debugPrint('Save failed: $e');if(mounted)setState(()=>saving=false);}}
+  Future<void> save() async {if(!changed)return;if(title.text.trim().isEmpty&&body.text.trim().isEmpty){if(mounted)setState(()=>saving=false);return;}try{await widget.store.upsert(Note(id,title.text.trim(),body.text.trim(),DateTime.now(),pinned:widget.note?.pinned??false,category:category,colorValue:colorValue));changed=false;if(mounted)setState(() { saving=false; saved=true; });}catch(e){debugPrint('Save failed: $e');if(mounted)setState(()=>saving=false);}}
   Future<void> finish() async {timer?.cancel();await save();if(mounted)Navigator.pop(context);}
   @override void dispose(){timer?.cancel();title.dispose();body.dispose();super.dispose();}
   @override Widget build(BuildContext c)=>PopScope(canPop:false,onPopInvokedWithResult:(didPop,result){if(!didPop)finish();},child:Scaffold(appBar:AppBar(leading:IconButton(onPressed:finish,icon:const Icon(Icons.arrow_back)),title:Text(widget.note==null?'New note':'Edit note',style:const TextStyle(fontWeight:FontWeight.w800)),actions:[Padding(padding:const EdgeInsets.only(right:16),child:Center(child:Text(saving?'Saving…':saved?'Saved':'Auto-save',style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant))))]),body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,20),child:Column(children:[
@@ -256,6 +258,10 @@ class _EditorState extends State<Editor> {
       items: ['General','Personal','Work','Study','Ideas'].map((value)=>DropdownMenuItem(value:value,child:Text(value))).toList(),
       onChanged: (value) { if (value != null) { setState(() => category = value); changed = true; save(); } },
     ),
+    const SizedBox(height:12),
+    Align(alignment:Alignment.centerLeft,child:Text('Note colour',style:TextStyle(fontWeight:FontWeight.w700))),
+    const SizedBox(height:8),
+    Wrap(spacing:12,children:[0,0xFFFFF1C9,0xFFDDF3E4,0xFFDCEBFF,0xFFF1DDF7,0xFFFFE1E1].map((value)=>InkWell(onTap:(){setState(()=>colorValue=value);changed=true;save();},customBorder:const CircleBorder(),child:Container(width:30,height:30,decoration:BoxDecoration(color:value==0?Theme.of(c).colorScheme.surfaceContainerHighest:Color(value),shape:BoxShape.circle,border:Border.all(color:colorValue==value?Theme.of(c).colorScheme.primary:Theme.of(c).colorScheme.outline,width:colorValue==value?3:1)),child:colorValue==value?const Icon(Icons.check,size:16):null))).toList()),
     const SizedBox(height:12),
     TextField(controller:title,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:25,fontWeight:FontWeight.w800),decoration:const InputDecoration(hintText:'Title',filled:false)),const SizedBox(height:12),Expanded(child:TextField(controller:body,expands:true,minLines:null,maxLines:null,textAlignVertical:TextAlignVertical.top,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:16,height:1.6),decoration:const InputDecoration(hintText:'Start writing your thoughts…',filled:false)))])))));
 }

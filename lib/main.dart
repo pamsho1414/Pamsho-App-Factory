@@ -127,7 +127,7 @@ class _NotesAppState extends State<NotesApp> {
 
 class Home extends StatefulWidget {
   const Home({super.key,required this.store,required this.dark,required this.accent,required this.onDark,required this.onAccent});
-  final NotesStore store; final bool dark; final Color accent; final ValueChanged<bool> onDark; final ValueChanged<Color> onAccent;;
+  final NotesStore store; final bool dark; final Color accent; final ValueChanged<bool> onDark; final ValueChanged<Color> onAccent;
   @override State<Home> createState()=>_HomeState();
 }
 class _HomeState extends State<Home> {

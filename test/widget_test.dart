@@ -53,6 +53,23 @@ void main() {
     reloaded.dispose();
   });
 
+  test('note category defaults safely and survives storage reload', () async {
+    final store = NotesStore();
+    await store.load();
+    final note = Note('work-1', 'Project', 'Plan', DateTime(2026, 11, 4), category: 'Work');
+    await store.upsert(note);
+    final reloaded = NotesStore();
+    await reloaded.load();
+    expect(reloaded.notes.single.category, 'Work');
+    final legacy = Note.from({
+      'id': 'legacy', 'title': 'Old', 'body': 'Note',
+      'updated': DateTime(2026, 11, 1).toIso8601String(),
+    });
+    expect(legacy.category, 'General');
+    store.dispose();
+    reloaded.dispose();
+  });
+
   testWidgets('home screen opens with Easy Simple Notes branding', (tester) async {
     await tester.pumpWidget(const NotesApp());
     await tester.pumpAndSettle();

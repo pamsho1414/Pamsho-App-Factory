@@ -88,24 +88,30 @@ jobs:
           pub_cache = Path(os.environ.get("PUB_CACHE", Path.home() / ".pub-cache"))
           root = pub_cache / "hosted" / "pub.dev"
           changed = []
+          found = []
           if root.exists():
               for package in root.iterdir():
                   android = package / "android"
                   if not android.is_dir():
                       continue
                   for path in list(android.rglob("build.gradle")) + list(android.rglob("build.gradle.kts")):
-                      source = path.read_text()
-                      updated = re.sub(
-                          r"(?m)^(\\s*compileSdk(?:Version)?\\s*(?:=\\s*)?)(?:flutter\\.compileSdkVersion|[0-9]+)(\\s*)$",
-                          r"\\g<1>36\\g<2>",
-                          source,
-                      )
-                      if updated != source:
-                          path.write_text(updated)
+                      lines = path.read_text().splitlines()
+                      output = []
+                      touched = False
+                      for line in lines:
+                          if re.match(r"^\s*compileSdk(?:Version)?\s*(?:=\s*)?(?:flutter\.compileSdkVersion|\d+)\s*$", line):
+                              found.append(f"{path}: {line.strip()}")
+                              indent = line[:len(line) - len(line.lstrip())]
+                              key = "compileSdkVersion" if "compileSdkVersion" in line else "compileSdk"
+                              line = f"{indent}{key} = 36" if path.name.endswith(".kts") or key == "compileSdk" else f"{indent}{key} 36"
+                              touched = True
+                          output.append(line)
+                      if touched:
+                          path.write_text("\n".join(output) + "\n")
                           changed.append(str(path))
-          print(f"Aligned compileSdk 36 in {len(changed)} Android plugin modules")
-          for path in changed:
-              print(path)
+          print(f"Found {len(found)} compileSdk declarations; updated {len(changed)} plugin modules.")
+          for item in found:
+              print(item)
           PY
       - run: flutter analyze
       - run: flutter test

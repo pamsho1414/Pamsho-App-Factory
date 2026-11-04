@@ -71,20 +71,29 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import os, re
+          import os
           pub_cache = Path(os.environ.get("PUB_CACHE", Path.home() / ".pub-cache"))
-          roots = [pub_cache / "hosted" / "pub.dev"]
+          root = pub_cache / "hosted" / "pub.dev"
           changed = []
-          for root in roots:
-              if not root.exists():
-                  continue
+          if root.exists():
               for pattern in ("**/android/build.gradle", "**/android/build.gradle.kts"):
                   for path in root.glob(pattern):
-                      source = path.read_text()
-                      updated = re.sub(r"compileSdkVersion\\s+(?:flutter\\.compileSdkVersion|[0-9]+)", "compileSdkVersion 36", source)
-                      updated = re.sub(r"compileSdk\\s*=\\s*(?:flutter\\.compileSdkVersion|[0-9]+)", "compileSdk = 36", updated)
-                      if updated != source:
-                          path.write_text(updated)
+                      lines = path.read_text().splitlines()
+                      output = []
+                      touched = False
+                      for line in lines:
+                          stripped = line.strip()
+                          if stripped.startswith("compileSdkVersion "):
+                              indent = line[:len(line) - len(line.lstrip())]
+                              line = indent + "compileSdkVersion 36"
+                              touched = True
+                          elif stripped.startswith("compileSdk = "):
+                              indent = line[:len(line) - len(line.lstrip())]
+                              line = indent + "compileSdk = 36"
+                              touched = True
+                          output.append(line)
+                      if touched:
+                          path.write_text("\\n".join(output) + "\\n")
                           changed.append(str(path))
           print(f"Aligned compileSdk 36 in {len(changed)} Android plugin modules")
           for path in changed:

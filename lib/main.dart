@@ -301,8 +301,8 @@ class _EditorState extends State<Editor> {
     final current = body.value;
     final text = current.text;
     final selection = current.selection;
-    final start = selection.isValid ? selection.start.clamp(0, text.length) : text.length;
-    final end = selection.isValid ? selection.end.clamp(start, text.length) : start;
+    final start = selection.isValid ? selection.start.clamp(0, text.length) as int : text.length;
+    final end = selection.isValid ? selection.end.clamp(start, text.length) as int : start;
     final lineStart = text.lastIndexOf('\n', start - 1) + 1;
     var lineEnd = text.indexOf('\n', end);
     if (lineEnd < 0) lineEnd = text.length;
@@ -331,7 +331,6 @@ class _EditorState extends State<Editor> {
       text: updated,
       selection: TextSelection.collapsed(offset: cursor),
     );
-    FocusScope.of(context).requestFocus(FocusNode());
   }
   @override void dispose(){timer?.cancel();title.dispose();body.dispose();super.dispose();}
   @override Widget build(BuildContext c)=>PopScope(canPop:false,onPopInvokedWithResult:(didPop,result){if(!didPop)finish();},child:Scaffold(appBar:AppBar(leading:IconButton(onPressed:finish,icon:const Icon(Icons.arrow_back)),title:Text(widget.note==null?'New note':'Edit note',style:const TextStyle(fontWeight:FontWeight.w800)),actions:[Padding(padding:const EdgeInsets.only(right:16),child:Center(child:Text(saving?'Saving…':saved?'Saved':'Auto-save',style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant))))]),body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,20),child:Column(children:[

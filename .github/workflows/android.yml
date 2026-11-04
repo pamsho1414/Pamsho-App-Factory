@@ -1,4 +1,4 @@
-name: Build Simple Notes Android APK
+name: Build Easy Simple Notes Android APK
 on:
   push:
     branches: [main]
@@ -20,6 +20,34 @@ jobs:
           cache: true
       - name: Generate Android platform files
         run: flutter create . --platforms=android --org=com.pamsho --project-name=pamsho_notes
+      - name: Brand Android app and create launcher icon
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path("android/app/src/main")
+          manifest = root / "AndroidManifest.xml"
+          source = manifest.read_text()
+          source = re.sub(r'android:label="[^"]+"', 'android:label="Easy Simple Notes"', source, count=1)
+          source = re.sub(r'android:icon="[^"]+"', 'android:icon="@mipmap/ic_launcher"', source, count=1)
+          manifest.write_text(source)
+          res = root / "res"
+          (res / "mipmap-anydpi-v26").mkdir(parents=True, exist_ok=True)
+          (res / "values").mkdir(parents=True, exist_ok=True)
+          (res / "drawable").mkdir(parents=True, exist_ok=True)
+          (res / "values" / "ic_launcher_background.xml").write_text("""<resources><color name="ic_launcher_background">#5267D8</color></resources>""")
+          foreground = """<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+            <path android:fillColor="#FFF1B8" android:pathData="M28,17 L65,17 L82,34 L82,88 Q82,93 77,93 L28,93 Q23,93 23,88 L23,22 Q23,17 28,17 Z"/>
+            <path android:fillColor="#F2C94C" android:pathData="M65,17 L65,31 Q65,35 69,35 L82,35 Z"/>
+            <path android:fillColor="#5267D8" android:pathData="M34,45 L70,45 L70,49 L34,49 Z M34,57 L70,57 L70,61 L34,61 Z M34,69 L63,69 L63,73 L34,73 Z"/>
+            <path android:fillColor="#26345F" android:pathData="M61,77 Q67,54 88,29 Q91,26 92,29 Q89,54 70,78 Q65,84 61,77 Z"/>
+            <path android:fillColor="#FFFFFF" android:pathData="M67,73 Q77,55 88,34 Q82,57 69,77 Z"/>
+          </vector>"""
+          (res / "drawable" / "ic_launcher_foreground.xml").write_text(foreground)
+          adaptive = """<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@color/ic_launcher_background"/><foreground android:drawable="@drawable/ic_launcher_foreground"/></adaptive-icon>"""
+          (res / "mipmap-anydpi-v26" / "ic_launcher.xml").write_text(adaptive)
+          (res / "mipmap-anydpi-v26" / "ic_launcher_round.xml").write_text(adaptive)
+          PY
       - name: Set Android minimum SDK
         run: |
           python3 - <<'PY'
@@ -38,7 +66,7 @@ jobs:
       - run: flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:
-          name: simple-notes-release-apk
+          name: easy-simple-notes-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14

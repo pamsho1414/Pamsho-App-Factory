@@ -321,7 +321,10 @@ class _BannerAdBarState extends State<_BannerAdBar> {
 
       final ad = BannerAd(
         // Google's official Android banner test unit. Replace only after testing.
-        adUnitId: 'ca-app-pub-3940256099942544/6300978111',
+        adUnitId: const String.fromEnvironment(
+          'ADMOB_BANNER_AD_UNIT_ID',
+          defaultValue: 'ca-app-pub-3329079275659359/5045179126',
+        ),
         size: AdSize.banner,
         request: const AdRequest(),
         listener: BannerAdListener(

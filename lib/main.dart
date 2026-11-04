@@ -83,7 +83,80 @@ class _HomeState extends State<Home> {
       body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(18,8,18,90),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         TextField(onChanged:(v)=>setState(()=>query=v),decoration:const InputDecoration(hintText:'Search notes',prefixIcon:Icon(Icons.search))),
         const SizedBox(height:23),Row(children:[const Text('All notes',style:TextStyle(fontWeight:FontWeight.w800,fontSize:18)),const Spacer(),Text('${list.length} notes',style:TextStyle(color:t.colorScheme.onSurfaceVariant))]),const SizedBox(height:12),
-        Expanded(child:!widget.store.ready?const Center(child:CircularProgressIndicator()):list.isEmpty?Center(child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[Icon(Icons.sticky_note_2_outlined,size:58,color:t.colorScheme.primary),const SizedBox(height:14),Text(query.isEmpty?'A fresh page awaits':'No notes found',style:const TextStyle(fontSize:18,fontWeight:FontWeight.w800)),const SizedBox(height:7),Text(query.isEmpty?'Capture your ideas and reminders.':'Try another keyword.',style:TextStyle(color:t.colorScheme.onSurfaceVariant)),if(query.isEmpty)TextButton.icon(onPressed:()=>edit(),icon:const Icon(Icons.add),label:const Text('Write your first note'))])):ListView.separated(itemCount:list.length,separatorBuilder:(_,__)=>const SizedBox(height:10),itemBuilder:(c,i){final n=list[i];return GestureDetector(onLongPress:()=>actions(n),child:Card(child:InkWell(borderRadius:BorderRadius.circular(19),onTap:()=>edit(n),child:Padding(padding:const EdgeInsets.all(17),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Row(children:[Expanded(child:Text(n.title.isEmpty?'Untitled note':n.title,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w800))),Icon(Icons.more_horiz,color:t.colorScheme.onSurfaceVariant)]),if(n.body.isNotEmpty)...[const SizedBox(height:7),Text(n.body,maxLines:3,overflow:TextOverflow.ellipsis,style:TextStyle(height:1.4,color:t.colorScheme.onSurfaceVariant))],const SizedBox(height:12),Text(dateText(n.updated),style:TextStyle(fontSize:11,color:t.colorScheme.onSurfaceVariant))]))));})),
+        Expanded(
+          child: !widget.store.ready
+              ? const Center(child: CircularProgressIndicator())
+              : list.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.sticky_note_2_outlined, size: 58, color: t.colorScheme.primary),
+                          const SizedBox(height: 14),
+                          Text(query.isEmpty ? 'A fresh page awaits' : 'No notes found',
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 7),
+                          Text(query.isEmpty ? 'Capture your ideas and reminders.' : 'Try another keyword.',
+                              style: TextStyle(color: t.colorScheme.onSurfaceVariant)),
+                          if (query.isEmpty)
+                            TextButton.icon(
+                              onPressed: () => edit(),
+                              icon: const Icon(Icons.add),
+                              label: const Text('Write your first note'),
+                            ),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount: list.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final note = list[index];
+                        return GestureDetector(
+                          onLongPress: () => actions(note),
+                          child: Card(
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(19),
+                              onTap: () => edit(note),
+                              child: Padding(
+                                padding: const EdgeInsets.all(17),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            note.title.isEmpty ? 'Untitled note' : note.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                                          ),
+                                        ),
+                                        Icon(Icons.more_horiz, color: t.colorScheme.onSurfaceVariant),
+                                      ],
+                                    ),
+                                    if (note.body.isNotEmpty) ...[
+                                      const SizedBox(height: 7),
+                                      Text(
+                                        note.body,
+                                        maxLines: 3,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(height: 1.4, color: t.colorScheme.onSurfaceVariant),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 12),
+                                    Text(dateText(note.updated),
+                                        style: TextStyle(fontSize: 11, color: t.colorScheme.onSurfaceVariant)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+        ),
       ]))));
   }
 }
@@ -102,7 +175,87 @@ class _EditorState extends State<Editor> {
 class Bin extends StatelessWidget {
   const Bin({super.key,required this.store}); final NotesStore store;
   Future<void> emptyBin(BuildContext c) async {final yes=await showDialog<bool>(context:c,builder:(d)=>AlertDialog(title:const Text('Empty Bin?'),content:const Text('These notes will be permanently deleted.'),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Empty Bin'))]));if(yes==true)await store.empty();}
-  @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('Bin',style:TextStyle(fontWeight:FontWeight.w800)),actions:[if(store.bin.isNotEmpty)TextButton(onPressed:()=>emptyBin(c),child:const Text('Empty'))]),body:store.bin.isEmpty?const Center(child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[Icon(Icons.delete_outline,size:56),SizedBox(height:12),Text('Your Bin is empty',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800)),Text('Deleted notes will appear here.')])):ListView.separated(padding:const EdgeInsets.all(18),itemCount:store.bin.length,separatorBuilder:(_,__)=>const SizedBox(height:10),itemBuilder:(c,i){final n=store.bin[i];return Card(child:Padding(padding:const EdgeInsets.all(15),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(n.title.isEmpty?'Untitled note':n.title,style:const TextStyle(fontWeight:FontWeight.w800)),if(n.body.isNotEmpty)Text(n.body,maxLines:2,overflow:TextOverflow.ellipsis),Row(children:[TextButton.icon(onPressed:()=>store.restore(n),icon:const Icon(Icons.restore),label:const Text('Restore')),const Spacer(),IconButton(tooltip:'Delete permanently',onPressed:()async{final yes=await showDialog<bool>(context:c,builder:(d)=>AlertDialog(title:const Text('Delete permanently?'),content:const Text('This cannot be undone.'),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Delete'))]));if(yes==true)await store.erase(n);},icon:const Icon(Icons.delete_forever_outlined))])])));})) );
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Bin', style: TextStyle(fontWeight: FontWeight.w800)),
+        actions: [
+          if (store.bin.isNotEmpty)
+            TextButton(onPressed: () => emptyBin(context), child: const Text('Empty')),
+        ],
+      ),
+      body: store.bin.isEmpty
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.delete_outline, size: 56),
+                  SizedBox(height: 12),
+                  Text('Your Bin is empty',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  Text('Deleted notes will appear here.'),
+                ],
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(18),
+              itemCount: store.bin.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final note = store.bin[index];
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(15),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(note.title.isEmpty ? 'Untitled note' : note.title,
+                            style: const TextStyle(fontWeight: FontWeight.w800)),
+                        if (note.body.isNotEmpty)
+                          Text(note.body, maxLines: 2, overflow: TextOverflow.ellipsis),
+                        Row(
+                          children: [
+                            TextButton.icon(
+                              onPressed: () => store.restore(note),
+                              icon: const Icon(Icons.restore),
+                              label: const Text('Restore'),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              tooltip: 'Delete permanently',
+                              onPressed: () async {
+                                final confirmed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (dialogContext) => AlertDialog(
+                                    title: const Text('Delete permanently?'),
+                                    content: const Text('This cannot be undone.'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(dialogContext, false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () => Navigator.pop(dialogContext, true),
+                                        child: const Text('Delete'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirmed == true) await store.erase(note);
+                              },
+                              icon: const Icon(Icons.delete_forever_outlined),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
 }
 
 class Settings extends StatelessWidget {

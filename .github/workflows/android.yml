@@ -77,7 +77,7 @@ jobs:
           set -e
           if [ "$build_status" -ne 0 ]; then
             if grep -q "currently compiled against android-34" /tmp/flutter-build.log; then
-              echo "Flutter regenerated Android Gradle files; enforcing compileSdk 36 after migration."
+              echo "Enforcing Android compileSdk 36 after Flutter Gradle migration."
               python3 - <<'PY'
           from pathlib import Path
           import re
@@ -87,18 +87,25 @@ jobs:
               if not path.exists():
                   continue
               source = path.read_text()
-              updated = re.sub(r"compileSdk\s*=\s*flutter\.compileSdkVersion", "compileSdk = 36", source)
-              updated = re.sub(r"compileSdkVersion\s+flutter\.compileSdkVersion", "compileSdkVersion 36", updated)
+              updated = re.sub(r"compileSdk\\s*(?:=\\s*)?(?:flutter\\.compileSdkVersion|[0-9]+)", "compileSdk = 36", source)
+              updated = re.sub(r"compileSdkVersion\\s+(?:flutter\\.compileSdkVersion|[0-9]+)", "compileSdkVersion 36", updated)
               if updated != source:
                   path.write_text(updated)
                   changed = True
-                  print(f"Updated {path} to compileSdk 36")
+                  print(f"Updated {path}:")
+                  for line in updated.splitlines():
+                      if "compileSdk" in line:
+                          print(line)
           if not changed:
-              raise SystemExit("Could not find the Flutter compileSdk setting to update.")
+              for path in candidates:
+                  if path.exists():
+                      print(f"--- {path} ---")
+                      print(path.read_text())
+              raise SystemExit("Could not locate compileSdk declaration in generated Gradle files.")
           PY
               flutter build apk --release
             else
-              echo "APK build failed for a reason other than the known compileSdk migration issue."
+              echo "APK build failed for a reason other than the known compileSdk issue."
               exit "$build_status"
             fi
           fi

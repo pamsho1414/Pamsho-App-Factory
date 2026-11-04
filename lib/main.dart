@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
-Future<void> main() {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const NotesApp());
   // Ads must never prevent the notes app itself from opening.

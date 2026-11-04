@@ -259,7 +259,7 @@ class _EditorState extends State<Editor> {
       onChanged: (value) { if (value != null) { setState(() => category = value); changed = true; save(); } },
     ),
     const SizedBox(height:12),
-    Align(alignment:Alignment.centerLeft,child:Text('Note colour',style:TextStyle(fontWeight:FontWeight.w700))),
+    const Align(alignment:Alignment.centerLeft,child:Text('Note colour',style:TextStyle(fontWeight:FontWeight.w700))),
     const SizedBox(height:8),
     Wrap(spacing:12,children:[0,0xFFFFF1C9,0xFFDDF3E4,0xFFDCEBFF,0xFFF1DDF7,0xFFFFE1E1].map((value)=>InkWell(onTap:(){setState(()=>colorValue=value);changed=true;save();},customBorder:const CircleBorder(),child:Container(width:30,height:30,decoration:BoxDecoration(color:value==0?Theme.of(c).colorScheme.surfaceContainerHighest:Color(value),shape:BoxShape.circle,border:Border.all(color:colorValue==value?Theme.of(c).colorScheme.primary:Theme.of(c).colorScheme.outline,width:colorValue==value?3:1)),child:colorValue==value?const Icon(Icons.check,size:16):null))).toList()),
     const SizedBox(height:12),

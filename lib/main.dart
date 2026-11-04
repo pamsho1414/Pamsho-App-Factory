@@ -91,9 +91,11 @@ class _HomeState extends State<Home> {
     if (v == 'edit') await edit(n);
     if (v == 'pin') {
       await widget.store.togglePin(n);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(n.pinned ? 'Note unpinned' : 'Note pinned')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(n.pinned ? 'Note unpinned' : 'Note pinned')),
+        );
+      }
     }
     if(v=='bin'){await widget.store.trash(n); if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Moved to Bin')));}
   }

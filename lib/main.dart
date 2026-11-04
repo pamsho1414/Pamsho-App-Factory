@@ -6,7 +6,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
-Future<void> main() async { WidgetsFlutterBinding.ensureInitialized(); await MobileAds.instance.initialize(); runApp(const NotesApp()); }
+Future<void> main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const NotesApp());
+  // Ads must never prevent the notes app itself from opening.
+  unawaited(_initializeAdsSafely());
+}
+
+Future<void>? _adsInitialization;
+
+Future<void> _initializeAdsSafely() {
+  return _adsInitialization ??= () async {
+    try {
+      await MobileAds.instance.initialize();
+      debugPrint('AdMob initialized successfully.');
+    } catch (error, stackTrace) {
+      // Keep the core notes app usable even if the ads SDK fails.
+      debugPrint('AdMob initialization failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }();
+}
 const seed = Color(0xFF5267D8);
 
 class Note {
@@ -137,6 +157,14 @@ class _HomeBannerAdState extends State<HomeBannerAd> {
   @override
   void initState() {
     super.initState();
+    unawaited(_createAndLoadBanner());
+  }
+
+  Future<void> _createAndLoadBanner() async {
+    // Wait for the one-time SDK initialization before requesting a banner.
+    await _initializeAdsSafely();
+    if (!mounted) return;
+
     final ad = BannerAd(
       adUnitId: _bannerAdUnitId,
       size: AdSize.banner,
@@ -149,6 +177,7 @@ class _HomeBannerAdState extends State<HomeBannerAd> {
         onAdFailedToLoad: (ad, error) {
           debugPrint('AdMob banner failed to load: $error');
           ad.dispose();
+          if (identical(_banner, ad)) _banner = null;
         },
       ),
     );

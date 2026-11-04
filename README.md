@@ -1,18 +1,22 @@
-# Pamsho Notes
+# Easy Simple Notes
 
-A lightweight Flutter notes app. The first version supports creating, editing, searching, and deleting notes. Notes are stored locally on the device using SharedPreferences.
+A clean, lightweight Android notes app built with Flutter.
 
-## Build an Android APK
+## Features
+- Create and edit notes with automatic saving.
+- Search note titles and content.
+- Long-press a note to edit or move it to the Bin.
+- Restore notes from the Bin or permanently delete them after confirmation.
+- Light and dark themes with six accent colours.
+- Local, offline-first storage; no account is required.
 
-1. Open the **Actions** tab in this repository.
-2. Select **Build Android APK**.
-3. Choose **Run workflow** (or push a commit to `main`).
-4. When the run succeeds, open the run and download the `pamsho-notes-release-apk` artifact.
+## Android release build
+The GitHub Actions workflow runs Flutter static analysis, automated tests, and a release APK build on every push to `main`. The APK is uploaded as the `easy-simple-notes-release-apk` workflow artifact and is available for 14 days.
 
-The workflow generates the Android platform folder in the cloud runner, builds a release APK, and uploads it as a workflow artifact.
+## Data and privacy
+Notes are stored locally on the device using SharedPreferences. There is currently no cloud sync, account system, analytics SDK, or advertising SDK. Clearing app data or uninstalling the app can remove locally stored notes. Back up important notes separately until an in-app backup feature is added.
 
-## Current scope
-
-- Local-only note storage (no account or cloud sync yet).
-- Create, edit, search, and swipe-to-delete notes.
-- No ads are included in this starter version.
+## Package
+- Flutter project: `pamsho_notes`
+- Android application ID: `com.pamsho.pamsho_notes`
+- App display name: `Easy Simple Notes`

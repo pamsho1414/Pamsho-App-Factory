@@ -8,7 +8,6 @@ import 'package:file_picker/file_picker.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  unawaited(MobileAds.instance.initialize());
   runApp(const NotesApp());
 }
 
@@ -308,24 +307,41 @@ class _BannerAdBarState extends State<_BannerAdBar> {
   @override
   void initState() {
     super.initState();
-    final ad = BannerAd(
-      // Google's official Android banner test unit. Replace only after testing.
-      adUnitId: 'ca-app-pub-3940256099942544/6300978111',
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          if (!mounted) { ad.dispose(); return; }
-          setState(() { _banner = ad as BannerAd; _loaded = true; });
-        },
-        onAdFailedToLoad: (ad, error) {
-          debugPrint('AdMob test banner failed to load: $error');
-          ad.dispose();
-        },
-      ),
-    );
-    _banner = ad;
-    ad.load();
+    // Start AdMob only after the notes UI has rendered. A failed ad SDK
+    // initialization must never prevent the notes app from opening.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeAndLoadBanner();
+    });
+  }
+
+  Future<void> _initializeAndLoadBanner() async {
+    try {
+      await MobileAds.instance.initialize();
+      if (!mounted) return;
+
+      final ad = BannerAd(
+        // Google's official Android banner test unit. Replace only after testing.
+        adUnitId: 'ca-app-pub-3940256099942544/6300978111',
+        size: AdSize.banner,
+        request: const AdRequest(),
+        listener: BannerAdListener(
+          onAdLoaded: (ad) {
+            if (!mounted) { ad.dispose(); return; }
+            setState(() { _banner = ad as BannerAd; _loaded = true; });
+          },
+          onAdFailedToLoad: (ad, error) {
+            debugPrint('AdMob test banner failed to load: $error');
+            ad.dispose();
+          },
+        ),
+      );
+      _banner = ad;
+      await ad.load();
+    } catch (error, stackTrace) {
+      // Keep the notes app usable if Google Mobile Ads cannot initialize.
+      debugPrint('AdMob initialization failed; continuing without ads: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   @override

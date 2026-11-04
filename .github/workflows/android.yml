@@ -66,6 +66,9 @@ jobs:
                   source = source.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
                   p.write_text(source)
           PY
+      - name: Add Google Mobile Ads application ID
+        run: |
+          python3 -c "from pathlib import Path; p=Path('android/app/src/main/AndroidManifest.xml'); s=p.read_text(); marker='com.google.android.gms.ads.APPLICATION_ID'; meta='<meta-data android:name=\\\"com.google.android.gms.ads.APPLICATION_ID\\\" android:value=\\\"ca-app-pub-3329079275659359~2231313524\\\" />'; s=s.replace('</application>', '        '+meta+'\\n    </application>') if marker not in s else s; p.write_text(s)"
       - run: flutter pub get
       - name: Align Android plugin compile SDK
         run: |

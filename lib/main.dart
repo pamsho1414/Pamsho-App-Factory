@@ -108,7 +108,7 @@ class NotesStore extends ChangeNotifier {
   Future<void> empty() async { bin.clear(); await _save(); notifyListeners(); }
 }
 
-class NotesApp extends StatefulWidget { const NotesApp({super.key}); @override State<NotesApp> createState()=>_NotesAppState(); }
+class NotesApp extends StatefulWidget { const NotesApp({super.key, this.enableAds = true}); final bool enableAds; @override State<NotesApp> createState()=>_NotesAppState(); }
 class _NotesAppState extends State<NotesApp> {
   final store=NotesStore(); bool dark=false; Color accent=seed;
   @override void initState(){ super.initState(); store.load(); _settings(); }
@@ -119,7 +119,7 @@ class _NotesAppState extends State<NotesApp> {
   @override void dispose(){store.dispose();super.dispose();}
   @override Widget build(BuildContext c)=>AnimatedBuilder(animation:store,builder:(c,_)=>
     MaterialApp(debugShowCheckedModeBanner:false,title:'Easy Simple Notes',theme:theme(Brightness.light),darkTheme:theme(Brightness.dark),themeMode:dark?ThemeMode.dark:ThemeMode.light,
-      home:Home(store:store,dark:dark,accent:accent,onDark:setDark,onAccent:setAccent)));
+      home:Home(store:store,dark:dark,accent:accent,onDark:setDark,onAccent:setAccent,enableAds:widget.enableAds)));
 }
 
 const String _bannerAdUnitId = String.fromEnvironment('ADMOB_BANNER_AD_UNIT_ID', defaultValue: 'ca-app-pub-3940256099942544/9214589741');
@@ -180,8 +180,8 @@ class _HomeBannerAdState extends State<HomeBannerAd> {
 }
 
 class Home extends StatefulWidget {
-  const Home({super.key,required this.store,required this.dark,required this.accent,required this.onDark,required this.onAccent});
-  final NotesStore store; final bool dark; final Color accent; final ValueChanged<bool> onDark; final ValueChanged<Color> onAccent;
+  const Home({super.key,required this.store,required this.dark,required this.accent,required this.onDark,required this.onAccent,required this.enableAds});
+  final NotesStore store; final bool dark; final Color accent; final ValueChanged<bool> onDark; final ValueChanged<Color> onAccent; final bool enableAds;
   @override State<Home> createState()=>_HomeState();
 }
 class _HomeState extends State<Home> {
@@ -238,7 +238,7 @@ class _HomeState extends State<Home> {
       IconButton(tooltip:'Bin',onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>Bin(store:widget.store))),icon:Badge(isLabelVisible:widget.store.bin.isNotEmpty,label:Text('${widget.store.bin.length}'),child:const Icon(Icons.delete_sweep_outlined))),
       IconButton(tooltip:'Settings',onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>Settings(store:widget.store,dark:widget.dark,accent:widget.accent,onDark:widget.onDark,onAccent:widget.onAccent))),icon:const Icon(Icons.tune_rounded)),const SizedBox(width:5)]),
       floatingActionButton:FloatingActionButton.extended(onPressed:()=>edit(),icon:const Icon(Icons.add),label:const Text('New note')),
-      bottomNavigationBar: const HomeBannerAd(),
+      bottomNavigationBar: widget.enableAds ? const HomeBannerAd() : null,
       body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(18,8,18,90),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         TextField(onChanged:(v)=>setState(()=>query=v),decoration:const InputDecoration(hintText:'Search notes',prefixIcon:Icon(Icons.search))),
         const SizedBox(height:12),

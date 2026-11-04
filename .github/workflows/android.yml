@@ -33,7 +33,7 @@ jobs:
           source = re.sub(r'android:label="[^"]+"', 'android:label="Easy Simple Notes"', source, count=1)
           source = re.sub(r'android:icon="[^"]+"', 'android:icon="@mipmap/ic_launcher"', source, count=1)
           if "com.google.android.gms.ads.APPLICATION_ID" not in source:
-              meta = '    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713" />'
+              meta = '    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3329079275659359~2231313524" />'
               source = source.replace("</application>", meta + "\n    </application>")
           manifest.write_text(source)
           res = root / "res"
@@ -112,7 +112,28 @@ jobs:
           PY
       - run: flutter analyze
       - run: flutter test
-      - name: Build release APK
+      - name: Build smoke-test APK with Google's test banner
+        run: flutter build apk --debug --dart-define=ADMOB_BANNER_AD_UNIT_ID=ca-app-pub-3940256099942544/6300978111
+      - name: Cold-start test on Android 15 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            adb install -r build/app/outputs/flutter-apk/app-debug.apk
+            adb shell am force-stop com.pamsho.pamsho_notes
+            adb logcat -c
+            adb shell monkey -p com.pamsho.pamsho_notes 1
+            sleep 15
+            adb shell pidof com.pamsho.pamsho_notes
+            if adb logcat -d | grep -E 'FATAL EXCEPTION|Fatal signal [0-9]+|Process: com\\.pamsho\\.pamsho_notes'; then
+              echo 'Fatal Android crash detected during cold start.'
+              exit 1
+            fi
+      - name: Build production release APK with live banner unit
         run: flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:

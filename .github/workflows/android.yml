@@ -67,48 +67,33 @@ jobs:
                   p.write_text(source)
           PY
       - run: flutter pub get
+      - name: Align Android plugin compile SDK
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+          pub_cache = Path(os.environ.get("PUB_CACHE", Path.home() / ".pub-cache"))
+          roots = [pub_cache / "hosted" / "pub.dev"]
+          changed = []
+          for root in roots:
+              if not root.exists():
+                  continue
+              for pattern in ("**/android/build.gradle", "**/android/build.gradle.kts"):
+                  for path in root.glob(pattern):
+                      source = path.read_text()
+                      updated = re.sub(r"compileSdkVersion\\s+(?:flutter\\.compileSdkVersion|[0-9]+)", "compileSdkVersion 36", source)
+                      updated = re.sub(r"compileSdk\\s*=\\s*(?:flutter\\.compileSdkVersion|[0-9]+)", "compileSdk = 36", updated)
+                      if updated != source:
+                          path.write_text(updated)
+                          changed.append(str(path))
+          print(f"Aligned compileSdk 36 in {len(changed)} Android plugin modules")
+          for path in changed:
+              print(path)
+          PY
       - run: flutter analyze
       - run: flutter test
       - name: Build release APK
-        run: |
-          set +e
-          flutter build apk --release 2>&1 | tee /tmp/flutter-build.log
-          build_status=${PIPESTATUS[0]}
-          set -e
-          if [ "$build_status" -ne 0 ]; then
-            if grep -q "currently compiled against android-34" /tmp/flutter-build.log; then
-              echo "Enforcing Android compileSdk 36 after Flutter Gradle migration."
-              python3 - <<'PY'
-          from pathlib import Path
-          import re
-          candidates = [Path("android/app/build.gradle.kts"), Path("android/app/build.gradle")]
-          changed = False
-          for path in candidates:
-              if not path.exists():
-                  continue
-              source = path.read_text()
-              updated = re.sub(r"compileSdk\s*(?:=\s*)?(?:flutter\.compileSdkVersion|[0-9]+)", "compileSdk = 36", source)
-              updated = re.sub(r"compileSdkVersion\s+(?:flutter\.compileSdkVersion|[0-9]+)", "compileSdkVersion 36", updated)
-              if updated != source:
-                  path.write_text(updated)
-                  changed = True
-                  print(f"Updated {path}:")
-                  for line in updated.splitlines():
-                      if "compileSdk" in line:
-                          print(line)
-          if not changed:
-              for path in candidates:
-                  if path.exists():
-                      print(f"--- {path} ---")
-                      print(path.read_text())
-              raise SystemExit("Could not locate compileSdk declaration in generated Gradle files.")
-          PY
-              flutter build apk --release
-            else
-              echo "APK build failed for a reason other than the known compileSdk issue."
-              exit "$build_status"
-            fi
-          fi
+        run: flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:
           name: easy-simple-notes-release-apk

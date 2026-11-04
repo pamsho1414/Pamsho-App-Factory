@@ -69,7 +69,39 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
-      - run: flutter build apk --release
+      - name: Build release APK
+        run: |
+          set +e
+          flutter build apk --release 2>&1 | tee /tmp/flutter-build.log
+          build_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$build_status" -ne 0 ]; then
+            if grep -q "currently compiled against android-34" /tmp/flutter-build.log; then
+              echo "Flutter regenerated Android Gradle files; enforcing compileSdk 36 after migration."
+              python3 - <<'PY'
+          from pathlib import Path
+          import re
+          candidates = [Path("android/app/build.gradle.kts"), Path("android/app/build.gradle")]
+          changed = False
+          for path in candidates:
+              if not path.exists():
+                  continue
+              source = path.read_text()
+              updated = re.sub(r"compileSdk\\s*=\\s*flutter\\.compileSdkVersion", "compileSdk = 36", source)
+              updated = re.sub(r"compileSdkVersion\\s+flutter\\.compileSdkVersion", "compileSdkVersion 36", updated)
+              if updated != source:
+                  path.write_text(updated)
+                  changed = True
+                  print(f"Updated {path} to compileSdk 36")
+          if not changed:
+              raise SystemExit("Could not find the Flutter compileSdk setting to update.")
+          PY
+              flutter build apk --release
+            else
+              echo "APK build failed for a reason other than the known compileSdk migration issue."
+              exit "$build_status"
+            fi
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: easy-simple-notes-release-apk

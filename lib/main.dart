@@ -7,12 +7,12 @@ Future<void> main() async { WidgetsFlutterBinding.ensureInitialized(); runApp(co
 const seed = Color(0xFF5267D8);
 
 class Note {
-  const Note(this.id, this.title, this.body, this.updated, {this.pinned = false});
-  final String id, title, body;
+  const Note(this.id, this.title, this.body, this.updated, {this.pinned = false, this.category = 'General'});
+  final String id, title, body, category;
   final DateTime updated;
   final bool pinned;
-  Map<String,dynamic> json() => {'id':id,'title':title,'body':body,'updated':updated.toIso8601String(),'pinned':pinned};
-  factory Note.from(Map<String,dynamic> m) => Note(m['id'],m['title'],m['body'],DateTime.parse(m['updated']),pinned: m['pinned'] == true);
+  Map<String,dynamic> json() => {'id':id,'title':title,'body':body,'updated':updated.toIso8601String(),'pinned':pinned,'category':category};
+  factory Note.from(Map<String,dynamic> m) => Note(m['id'],m['title'],m['body'],DateTime.parse(m['updated']),pinned: m['pinned'] == true, category: m['category'] as String? ?? 'General');
 }
 
 class NotesStore extends ChangeNotifier {
@@ -81,6 +81,7 @@ class Home extends StatefulWidget {
 }
 class _HomeState extends State<Home> {
   String query='';
+  String selectedCategory='All';
   String sortMode='Newest';
   Future<void> edit([Note? n]) async { await Navigator.push(context,MaterialPageRoute(builder:(_)=>Editor(store:widget.store,note:n))); }
   Future<void> actions(Note n) async {
@@ -102,7 +103,8 @@ class _HomeState extends State<Home> {
   }
   @override Widget build(BuildContext c) {
     final t=Theme.of(c);
-    final list=widget.store.notes.where((n)=>'${n.title} ${n.body}'.toLowerCase().contains(query.toLowerCase())).toList();
+    final categories = ['All', 'General', 'Personal', 'Work', 'Study', 'Ideas'];
+    final list=widget.store.notes.where((n)=>(selectedCategory == 'All' || n.category == selectedCategory) && '${n.title} ${n.body}'.toLowerCase().contains(query.toLowerCase())).toList();
     list.sort((a,b) {
       if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
       switch (sortMode) {
@@ -133,7 +135,21 @@ class _HomeState extends State<Home> {
       floatingActionButton:FloatingActionButton.extended(onPressed:()=>edit(),icon:const Icon(Icons.add),label:const Text('New note')),
       body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(18,8,18,90),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         TextField(onChanged:(v)=>setState(()=>query=v),decoration:const InputDecoration(hintText:'Search notes',prefixIcon:Icon(Icons.search))),
-        const SizedBox(height:23),Row(children:[const Text('All notes',style:TextStyle(fontWeight:FontWeight.w800,fontSize:18)),const Spacer(),Text('${list.length} notes',style:TextStyle(color:t.colorScheme.onSurfaceVariant))]),const SizedBox(height:12),
+        const SizedBox(height:12),
+        SizedBox(height:42,child:ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: categories.length,
+          separatorBuilder: (_, __) => const SizedBox(width:8),
+          itemBuilder: (context, index) {
+            final category = categories[index];
+            return ChoiceChip(
+              label: Text(category),
+              selected: selectedCategory == category,
+              onSelected: (_) => setState(() => selectedCategory = category),
+            );
+          },
+        )),
+        const SizedBox(height:15),Row(children:[Text(selectedCategory == 'All' ? 'All notes' : selectedCategory,style:const TextStyle(fontWeight:FontWeight.w800,fontSize:18)),const Spacer(),Text('${list.length} notes',style:TextStyle(color:t.colorScheme.onSurfaceVariant))]),const SizedBox(height:12),
         Expanded(
           child: !widget.store.ready
               ? const Center(child: CircularProgressIndicator())
@@ -191,6 +207,15 @@ class _HomeState extends State<Home> {
                                         Icon(Icons.more_horiz, color: t.colorScheme.onSurfaceVariant),
                                       ],
                                     ),
+                                    Container(
+                                      margin: const EdgeInsets.only(top: 7),
+                                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: t.colorScheme.primaryContainer.withValues(alpha: 0.65),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(note.category, style: TextStyle(fontSize: 10, color: t.colorScheme.onPrimaryContainer, fontWeight: FontWeight.w700)),
+                                    ),
                                     if (note.body.isNotEmpty) ...[
                                       const SizedBox(height: 7),
                                       Text(
@@ -218,13 +243,21 @@ class _HomeState extends State<Home> {
 
 class Editor extends StatefulWidget { const Editor({super.key,required this.store,this.note}); final NotesStore store; final Note? note; @override State<Editor> createState()=>_EditorState(); }
 class _EditorState extends State<Editor> {
-  late final TextEditingController title,body; late final String id; Timer? timer; bool changed=false,saving=false,saved=false;
-  @override void initState(){super.initState();id=widget.note?.id??DateTime.now().microsecondsSinceEpoch.toString();title=TextEditingController(text:widget.note?.title??'');body=TextEditingController(text:widget.note?.body??'');title.addListener(schedule);body.addListener(schedule);}
+  late final TextEditingController title,body; late final String id; late String category; Timer? timer; bool changed=false,saving=false,saved=false;
+  @override void initState(){super.initState();id=widget.note?.id??DateTime.now().microsecondsSinceEpoch.toString();category=widget.note?.category??'General';title=TextEditingController(text:widget.note?.title??'');body=TextEditingController(text:widget.note?.body??'');title.addListener(schedule);body.addListener(schedule);}
   void schedule(){changed=true;timer?.cancel();if(mounted)setState(()=>saving=true);timer=Timer(const Duration(milliseconds:500),save);}
-  Future<void> save() async {if(!changed)return;if(title.text.trim().isEmpty&&body.text.trim().isEmpty){if(mounted)setState(()=>saving=false);return;}try{await widget.store.upsert(Note(id,title.text.trim(),body.text.trim(),DateTime.now(),pinned:widget.note?.pinned??false));changed=false;if(mounted)setState(() { saving=false; saved=true; });}catch(e){debugPrint('Save failed: $e');if(mounted)setState(()=>saving=false);}}
+  Future<void> save() async {if(!changed)return;if(title.text.trim().isEmpty&&body.text.trim().isEmpty){if(mounted)setState(()=>saving=false);return;}try{await widget.store.upsert(Note(id,title.text.trim(),body.text.trim(),DateTime.now(),pinned:widget.note?.pinned??false,category:category));changed=false;if(mounted)setState(() { saving=false; saved=true; });}catch(e){debugPrint('Save failed: $e');if(mounted)setState(()=>saving=false);}}
   Future<void> finish() async {timer?.cancel();await save();if(mounted)Navigator.pop(context);}
   @override void dispose(){timer?.cancel();title.dispose();body.dispose();super.dispose();}
-  @override Widget build(BuildContext c)=>PopScope(canPop:false,onPopInvokedWithResult:(didPop,result){if(!didPop)finish();},child:Scaffold(appBar:AppBar(leading:IconButton(onPressed:finish,icon:const Icon(Icons.arrow_back)),title:Text(widget.note==null?'New note':'Edit note',style:const TextStyle(fontWeight:FontWeight.w800)),actions:[Padding(padding:const EdgeInsets.only(right:16),child:Center(child:Text(saving?'Saving…':saved?'Saved':'Auto-save',style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant))))]),body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,20),child:Column(children:[TextField(controller:title,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:25,fontWeight:FontWeight.w800),decoration:const InputDecoration(hintText:'Title',filled:false)),const SizedBox(height:12),Expanded(child:TextField(controller:body,expands:true,minLines:null,maxLines:null,textAlignVertical:TextAlignVertical.top,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:16,height:1.6),decoration:const InputDecoration(hintText:'Start writing your thoughts…',filled:false)))])))));
+  @override Widget build(BuildContext c)=>PopScope(canPop:false,onPopInvokedWithResult:(didPop,result){if(!didPop)finish();},child:Scaffold(appBar:AppBar(leading:IconButton(onPressed:finish,icon:const Icon(Icons.arrow_back)),title:Text(widget.note==null?'New note':'Edit note',style:const TextStyle(fontWeight:FontWeight.w800)),actions:[Padding(padding:const EdgeInsets.only(right:16),child:Center(child:Text(saving?'Saving…':saved?'Saved':'Auto-save',style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant))))]),body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,20),child:Column(children:[
+    DropdownButtonFormField<String>(
+      value: ['General','Personal','Work','Study','Ideas'].contains(category) ? category : 'General',
+      decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(Icons.folder_outlined)),
+      items: ['General','Personal','Work','Study','Ideas'].map((value)=>DropdownMenuItem(value:value,child:Text(value))).toList(),
+      onChanged: (value) { if (value != null) { setState(() => category = value); changed = true; save(); } },
+    ),
+    const SizedBox(height:12),
+    TextField(controller:title,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:25,fontWeight:FontWeight.w800),decoration:const InputDecoration(hintText:'Title',filled:false)),const SizedBox(height:12),Expanded(child:TextField(controller:body,expands:true,minLines:null,maxLines:null,textAlignVertical:TextAlignVertical.top,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:16,height:1.6),decoration:const InputDecoration(hintText:'Start writing your thoughts…',filled:false)))])))));
 }
 
 class Bin extends StatelessWidget {

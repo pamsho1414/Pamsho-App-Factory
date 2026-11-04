@@ -251,7 +251,7 @@ class _EditorState extends State<Editor> {
   @override void dispose(){timer?.cancel();title.dispose();body.dispose();super.dispose();}
   @override Widget build(BuildContext c)=>PopScope(canPop:false,onPopInvokedWithResult:(didPop,result){if(!didPop)finish();},child:Scaffold(appBar:AppBar(leading:IconButton(onPressed:finish,icon:const Icon(Icons.arrow_back)),title:Text(widget.note==null?'New note':'Edit note',style:const TextStyle(fontWeight:FontWeight.w800)),actions:[Padding(padding:const EdgeInsets.only(right:16),child:Center(child:Text(saving?'Saving…':saved?'Saved':'Auto-save',style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant))))]),body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,20),child:Column(children:[
     DropdownButtonFormField<String>(
-      value: ['General','Personal','Work','Study','Ideas'].contains(category) ? category : 'General',
+      initialValue: ['General','Personal','Work','Study','Ideas'].contains(category) ? category : 'General',
       decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(Icons.folder_outlined)),
       items: ['General','Personal','Work','Study','Ideas'].map((value)=>DropdownMenuItem(value:value,child:Text(value))).toList(),
       onChanged: (value) { if (value != null) { setState(() => category = value); changed = true; save(); } },

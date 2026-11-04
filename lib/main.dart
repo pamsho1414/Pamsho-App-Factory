@@ -8,9 +8,9 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const NotesApp());
-  // Ads must never prevent the notes app itself from opening.
-  unawaited(_initializeAdsSafely());
+  // Diagnostic build: temporarily disable the entire ads SDK and banner path
+  // to determine whether native AdMob startup is causing the launch crash.
+  runApp(const NotesApp(enableAds: false));
 }
 
 Future<void>? _adsInitialization;

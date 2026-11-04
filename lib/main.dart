@@ -19,8 +19,21 @@ class NotesStore extends ChangeNotifier {
   List<Note> notes=[], bin=[]; bool ready=false;
   Future<void> load() async {
     final p=await SharedPreferences.getInstance();
-    notes=_read(p.getString(activeKey)); bin=_read(p.getString(binKey));
+    final savedActive = p.getString(activeKey);
+    notes = savedActive == null ? _migrateLegacy(p.getStringList('pamsho_notes_v1') ?? []) : _read(savedActive);
+    bin = _read(p.getString(binKey));
+    if (savedActive == null && notes.isNotEmpty) await _save();
     _sort(); ready=true; notifyListeners();
+  }
+  List<Note> _migrateLegacy(List<String> raw) {
+    final migrated = <Note>[];
+    for (final item in raw) {
+      try {
+        final parts = Uri.decodeComponent(item).split('|');
+        if (parts.length == 4) migrated.add(Note(parts[0], parts[1], parts[2], DateTime.parse(parts[3])));
+      } catch (e) { debugPrint('Skipping unreadable legacy note: $e'); }
+    }
+    return migrated;
   }
   List<Note> _read(String? s) { try { return s==null ? [] : (jsonDecode(s) as List).map((e)=>Note.from(Map<String,dynamic>.from(e))).toList(); } catch(e) { debugPrint('Notes load error: $e'); return []; } }
   void _sort() { notes.sort((a,b)=>b.updated.compareTo(a.updated)); bin.sort((a,b)=>b.updated.compareTo(a.updated)); }

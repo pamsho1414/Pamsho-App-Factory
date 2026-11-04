@@ -93,7 +93,7 @@ jobs:
                               touched = True
                           output.append(line)
                       if touched:
-                          path.write_text("\\n".join(output) + "\\n")
+                          path.write_text("\n".join(output) + "\n")
                           changed.append(str(path))
           print(f"Aligned compileSdk 36 in {len(changed)} Android plugin modules")
           for path in changed:

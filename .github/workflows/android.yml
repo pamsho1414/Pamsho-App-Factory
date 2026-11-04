@@ -84,28 +84,24 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import os
+          import re
           pub_cache = Path(os.environ.get("PUB_CACHE", Path.home() / ".pub-cache"))
           root = pub_cache / "hosted" / "pub.dev"
           changed = []
           if root.exists():
-              for pattern in ("**/android/build.gradle", "**/android/build.gradle.kts"):
-                  for path in root.glob(pattern):
-                      lines = path.read_text().splitlines()
-                      output = []
-                      touched = False
-                      for line in lines:
-                          stripped = line.strip()
-                          if stripped.startswith("compileSdkVersion "):
-                              indent = line[:len(line) - len(line.lstrip())]
-                              line = indent + "compileSdkVersion 36"
-                              touched = True
-                          elif stripped.startswith("compileSdk = "):
-                              indent = line[:len(line) - len(line.lstrip())]
-                              line = indent + "compileSdk = 36"
-                              touched = True
-                          output.append(line)
-                      if touched:
-                          path.write_text("\n".join(output) + "\n")
+              for package in root.iterdir():
+                  android = package / "android"
+                  if not android.is_dir():
+                      continue
+                  for path in list(android.rglob("build.gradle")) + list(android.rglob("build.gradle.kts")):
+                      source = path.read_text()
+                      updated = re.sub(
+                          r"(?m)^(\\s*compileSdk(?:Version)?\\s*(?:=\\s*)?)(?:flutter\\.compileSdkVersion|[0-9]+)(\\s*)$",
+                          r"\\g<1>36\\g<2>",
+                          source,
+                      )
+                      if updated != source:
+                          path.write_text(updated)
                           changed.append(str(path))
           print(f"Aligned compileSdk 36 in {len(changed)} Android plugin modules")
           for path in changed:

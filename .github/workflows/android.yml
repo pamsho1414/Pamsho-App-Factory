@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   verify-and-build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -117,19 +117,28 @@ jobs:
       - name: Cold-start test on Android 15 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          cores: 2
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 2048
           disable-animations: true
           script: |
+            set -e
+            adb wait-for-device
             adb install -r build/app/outputs/flutter-apk/app-debug.apk
             adb shell am force-stop com.pamsho.pamsho_notes
             adb logcat -c
             adb shell monkey -p com.pamsho.pamsho_notes 1
-            sleep 15
-            adb shell pidof com.pamsho.pamsho_notes
-            if adb logcat -d | grep -E 'FATAL EXCEPTION|Fatal signal [0-9]+|Process: com\\.pamsho\\.pamsho_notes'; then
+            sleep 20
+            if ! adb shell pidof com.pamsho.pamsho_notes; then
+              echo 'App process did not remain alive after cold start.'
+              adb logcat -d -t 500
+              exit 1
+            fi
+            if adb logcat -d -t 1000 | grep -E 'FATAL EXCEPTION|Fatal signal [0-9]+|Process: com\.pamsho\.pamsho_notes'; then
               echo 'Fatal Android crash detected during cold start.'
               exit 1
             fi

@@ -7,11 +7,12 @@ Future<void> main() async { WidgetsFlutterBinding.ensureInitialized(); runApp(co
 const seed = Color(0xFF5267D8);
 
 class Note {
-  const Note(this.id, this.title, this.body, this.updated);
+  const Note(this.id, this.title, this.body, this.updated, {this.pinned = false});
   final String id, title, body;
   final DateTime updated;
-  Map<String,dynamic> json() => {'id':id,'title':title,'body':body,'updated':updated.toIso8601String()};
-  factory Note.from(Map<String,dynamic> m) => Note(m['id'],m['title'],m['body'],DateTime.parse(m['updated']));
+  final bool pinned;
+  Map<String,dynamic> json() => {'id':id,'title':title,'body':body,'updated':updated.toIso8601String(),'pinned':pinned};
+  factory Note.from(Map<String,dynamic> m) => Note(m['id'],m['title'],m['body'],DateTime.parse(m['updated']),pinned: m['pinned'] == true);
 }
 
 class NotesStore extends ChangeNotifier {
@@ -36,10 +37,24 @@ class NotesStore extends ChangeNotifier {
     return migrated;
   }
   List<Note> _read(String? s) { try { return s==null ? [] : (jsonDecode(s) as List).map((e)=>Note.from(Map<String,dynamic>.from(e))).toList(); } catch(e) { debugPrint('Notes load error: $e'); return []; } }
-  void _sort() { notes.sort((a,b)=>b.updated.compareTo(a.updated)); bin.sort((a,b)=>b.updated.compareTo(a.updated)); }
+  void _sort() {
+    notes.sort((a, b) {
+      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+      return b.updated.compareTo(a.updated);
+    });
+    bin.sort((a,b)=>b.updated.compareTo(a.updated));
+  }
   Future<void> _save() async { final p=await SharedPreferences.getInstance(); await p.setString(activeKey,jsonEncode(notes.map((n)=>n.json()).toList())); await p.setString(binKey,jsonEncode(bin.map((n)=>n.json()).toList())); }
   Future<void> upsert(Note n) async { notes.removeWhere((x)=>x.id==n.id); bin.removeWhere((x)=>x.id==n.id); notes.add(n); _sort(); await _save(); notifyListeners(); }
   Future<void> trash(Note n) async { notes.removeWhere((x)=>x.id==n.id); bin.removeWhere((x)=>x.id==n.id); bin.add(n); _sort(); await _save(); notifyListeners(); }
+  Future<void> togglePin(Note n) async {
+    final updated = Note(n.id, n.title, n.body, n.updated, pinned: !n.pinned);
+    notes.removeWhere((x) => x.id == n.id);
+    notes.add(updated);
+    _sort();
+    await _save();
+    notifyListeners();
+  }
   Future<void> restore(Note n) async { bin.removeWhere((x)=>x.id==n.id); notes.removeWhere((x)=>x.id==n.id); notes.add(n); _sort(); await _save(); notifyListeners(); }
   Future<void> erase(Note n) async { bin.removeWhere((x)=>x.id==n.id); await _save(); notifyListeners(); }
   Future<void> empty() async { bin.clear(); await _save(); notifyListeners(); }
@@ -69,10 +84,18 @@ class _HomeState extends State<Home> {
   Future<void> edit([Note? n]) async { await Navigator.push(context,MaterialPageRoute(builder:(_)=>Editor(store:widget.store,note:n))); }
   Future<void> actions(Note n) async {
     final v=await showModalBottomSheet<String>(context:context,showDragHandle:true,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      ListTile(leading:Icon(n.pinned ? Icons.push_pin : Icons.push_pin_outlined),title:Text(n.pinned ? 'Unpin note' : 'Pin note'),onTap:()=>Navigator.pop(c,'pin')),
       ListTile(leading:const Icon(Icons.edit_outlined),title:const Text('Edit note'),onTap:()=>Navigator.pop(c,'edit')),
       ListTile(leading:Icon(Icons.delete_outline,color:Theme.of(c).colorScheme.error),title:const Text('Move to Bin'),onTap:()=>Navigator.pop(c,'bin')),
       const SizedBox(height:12)])));
-    if(v=='edit') await edit(n); if(v=='bin'){await widget.store.trash(n); if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Moved to Bin')));}
+    if (v == 'edit') await edit(n);
+    if (v == 'pin') {
+      await widget.store.togglePin(n);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(n.pinned ? 'Note unpinned' : 'Note pinned')),
+      );
+    }
+    if(v=='bin'){await widget.store.trash(n); if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Moved to Bin')));}
   }
   @override Widget build(BuildContext c) {
     final t=Theme.of(c), list=widget.store.notes.where((n)=>'${n.title} ${n.body}'.toLowerCase().contains(query.toLowerCase())).toList();
@@ -125,6 +148,10 @@ class _HomeState extends State<Home> {
                                   children: [
                                     Row(
                                       children: [
+                                        if (note.pinned) ...[
+                                          Icon(Icons.push_pin, size: 16, color: t.colorScheme.primary),
+                                          const SizedBox(width: 7),
+                                        ],
                                         Expanded(
                                           child: Text(
                                             note.title.isEmpty ? 'Untitled note' : note.title,
@@ -166,7 +193,7 @@ class _EditorState extends State<Editor> {
   late final TextEditingController title,body; late final String id; Timer? timer; bool changed=false,saving=false,saved=false;
   @override void initState(){super.initState();id=widget.note?.id??DateTime.now().microsecondsSinceEpoch.toString();title=TextEditingController(text:widget.note?.title??'');body=TextEditingController(text:widget.note?.body??'');title.addListener(schedule);body.addListener(schedule);}
   void schedule(){changed=true;timer?.cancel();if(mounted)setState(()=>saving=true);timer=Timer(const Duration(milliseconds:500),save);}
-  Future<void> save() async {if(!changed)return;if(title.text.trim().isEmpty&&body.text.trim().isEmpty){if(mounted)setState(()=>saving=false);return;}try{await widget.store.upsert(Note(id,title.text.trim(),body.text.trim(),DateTime.now()));changed=false;if(mounted)setState(() { saving=false; saved=true; });}catch(e){debugPrint('Save failed: $e');if(mounted)setState(()=>saving=false);}}
+  Future<void> save() async {if(!changed)return;if(title.text.trim().isEmpty&&body.text.trim().isEmpty){if(mounted)setState(()=>saving=false);return;}try{await widget.store.upsert(Note(id,title.text.trim(),body.text.trim(),DateTime.now(),pinned:widget.note?.pinned??false));changed=false;if(mounted)setState(() { saving=false; saved=true; });}catch(e){debugPrint('Save failed: $e');if(mounted)setState(()=>saving=false);}}
   Future<void> finish() async {timer?.cancel();await save();if(mounted)Navigator.pop(context);}
   @override void dispose(){timer?.cancel();title.dispose();body.dispose();super.dispose();}
   @override Widget build(BuildContext c)=>PopScope(canPop:false,onPopInvokedWithResult:(didPop,result){if(!didPop)finish();},child:Scaffold(appBar:AppBar(leading:IconButton(onPressed:finish,icon:const Icon(Icons.arrow_back)),title:Text(widget.note==null?'New note':'Edit note',style:const TextStyle(fontWeight:FontWeight.w800)),actions:[Padding(padding:const EdgeInsets.only(right:16),child:Center(child:Text(saving?'Saving…':saved?'Saved':'Auto-save',style:TextStyle(fontSize:12,color:Theme.of(c).colorScheme.onSurfaceVariant))))]),body:SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,20),child:Column(children:[TextField(controller:title,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:25,fontWeight:FontWeight.w800),decoration:const InputDecoration(hintText:'Title',filled:false)),const SizedBox(height:12),Expanded(child:TextField(controller:body,expands:true,minLines:null,maxLines:null,textAlignVertical:TextAlignVertical.top,textCapitalization:TextCapitalization.sentences,style:const TextStyle(fontSize:16,height:1.6),decoration:const InputDecoration(hintText:'Start writing your thoughts…',filled:false)))])))));

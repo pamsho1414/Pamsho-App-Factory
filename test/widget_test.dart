@@ -36,6 +36,23 @@ void main() {
     store.dispose();
   });
 
+  test('pinned notes stay above regular notes and survive storage reload', () async {
+    final store = NotesStore();
+    await store.load();
+    final older = Note('older', 'Older', 'First', DateTime(2026, 11, 1));
+    final newer = Note('newer', 'Newer', 'Second', DateTime(2026, 11, 4));
+    await store.upsert(older);
+    await store.upsert(newer);
+    await store.togglePin(older);
+    expect(store.notes.first.id, 'older');
+    final reloaded = NotesStore();
+    await reloaded.load();
+    expect(reloaded.notes.first.pinned, isTrue);
+    expect(reloaded.notes.first.id, 'older');
+    store.dispose();
+    reloaded.dispose();
+  });
+
   testWidgets('home screen opens with Easy Simple Notes branding', (tester) async {
     await tester.pumpWidget(const NotesApp());
     await tester.pumpAndSettle();

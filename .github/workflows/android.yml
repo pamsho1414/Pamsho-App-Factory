@@ -119,6 +119,7 @@ jobs:
         run: flutter build apk --release
       - name: Free disk space before emulator boot
         run: |
+          set -euxo pipefail
           echo "Disk usage before cleanup:"
           df -h /
           sudo rm -rf /usr/local/lib/android/sdk/ndk/*
@@ -127,6 +128,29 @@ jobs:
           sudo apt-get clean
           echo "Disk usage after cleanup:"
           df -h /
+          AVAILABLE_KB="$(df -Pk / | awk 'NR==2 {print $4}')"
+          if [ "$AVAILABLE_KB" -lt 4000000 ]; then
+            echo "Less than 4 GB remains for Android emulator system-image installation."
+            exit 1
+          fi
+      - name: Enable KVM for Android emulator
+        run: |
+          set -euxo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "KVM device /dev/kvm is unavailable on this runner."
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 666 /dev/kvm
+          ls -l /dev/kvm
+      - name: Initialize Android Debug Bridge
+        run: |
+          set -euxo pipefail
+          adb version
+          adb start-server
+          adb devices -l
       - name: Cold-start test on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:

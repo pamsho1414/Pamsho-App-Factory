@@ -120,7 +120,7 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - name: Build release APK
-        run: flutter build apk --release --dart-define=ADMOB_BANNER_AD_UNIT_ID=ca-app-pub-3329079275659359/5045179126
+        run: flutter build apk --release --dart-define=ADMOB_BANNER_AD_UNIT_ID=ca-app-pub-3940256099942544/9214589741
       - uses: actions/upload-artifact@v4
         with:
           name: easy-simple-notes-release-apk

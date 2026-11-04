@@ -11,6 +11,8 @@ dependencies:
   file_picker: ^8.1.7
   google_mobile_ads: ^9.2.0
 dev_dependencies:
+  integration_test:
+    sdk: flutter
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0

@@ -114,6 +114,18 @@ jobs:
       - run: flutter test
       - name: Build smoke-test APK with Google's test banner
         run: flutter build apk --debug --dart-define=ADMOB_BANNER_AD_UNIT_ID=ca-app-pub-3940256099942544/6300978111
+      - name: Build production release APK with live banner unit
+        run: flutter build apk --release
+      - name: Free disk space before emulator boot
+        run: |
+          echo "Disk usage before cleanup:"
+          df -h /
+          sudo rm -rf /usr/local/lib/android/sdk/ndk/*
+          sudo rm -rf /usr/local/lib/android/sdk/cmake/*
+          rm -rf ~/.gradle/caches
+          sudo apt-get clean
+          echo "Disk usage after cleanup:"
+          df -h /
       - name: Cold-start test on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -154,8 +166,6 @@ jobs:
 
             APP_CRASH="$(adb -s emulator-5554 logcat -d -v threadtime -t 2000 | grep -E 'FATAL EXCEPTION|Fatal signal [0-9]+|Process: com\\.pamsho\\.pamsho_notes' || true)"
             test -z "$APP_CRASH" || { echo "$APP_CRASH"; echo 'Fatal crash marker detected during app cold start.'; exit 1; }
-      - name: Build production release APK with live banner unit
-        run: flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:
           name: easy-simple-notes-release-apk

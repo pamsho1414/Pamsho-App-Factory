@@ -10,7 +10,6 @@ dependencies:
   flutter:
     sdk: flutter
   shared_preferences: ^2.3.2
-  google_mobile_ads: ^9.2.0
 
 dev_dependencies:
   flutter_test:
